@@ -77,6 +77,49 @@ public:
         }
     }
 
+    static bool getBool(const std::string& json, const std::string& key) {
+        size_t keyPos = json.find("\"" + key + "\"");
+        if (keyPos == std::string::npos) return false;
+        size_t colonPos = json.find(":", keyPos);
+        if (colonPos == std::string::npos) return false;
+        // Skip whitespace after colon
+        size_t valPos = json.find_first_not_of(" \t\r\n", colonPos + 1);
+        if (valPos == std::string::npos) return false;
+        // Check for boolean literal
+        if (json.substr(valPos, 4) == "true")  return true;
+        if (json.substr(valPos, 5) == "false") return false;
+        // Fallback: treat as numeric (1 = true)
+        return getFloat(json, key) > 0.5f;
+    }
+
+    // Parse an array of {beat, value} objects from a JSON string.
+    // Expects: "points":[{"beat":0,"value":0.5},...]
+    static std::vector<std::pair<double,float>> getPointsArray(
+        const std::string& json, const std::string& key)
+    {
+        std::vector<std::pair<double,float>> result;
+        size_t kp = json.find("\"" + key + "\"");
+        if (kp == std::string::npos) return result;
+        size_t arrStart = json.find('[', kp);
+        if (arrStart == std::string::npos) return result;
+        size_t arrEnd = json.find(']', arrStart);
+        if (arrEnd == std::string::npos) return result;
+        std::string arr = json.substr(arrStart + 1, arrEnd - arrStart - 1);
+        // Split by '}'
+        size_t pos = 0;
+        while (pos < arr.size()) {
+            size_t ob = arr.find('{', pos);
+            size_t cb = arr.find('}', ob);
+            if (ob == std::string::npos || cb == std::string::npos) break;
+            std::string obj = arr.substr(ob, cb - ob + 1);
+            double beat  = getDouble(obj, "beat");
+            float  value = getFloat (obj, "value");
+            result.emplace_back(beat, value);
+            pos = cb + 1;
+        }
+        return result;
+    }
+
     static float getFloat(const std::string& json, const std::string& key) {
         return static_cast<float>(getDouble(json, key));
     }
@@ -187,6 +230,78 @@ void processCommand(const std::string& line, coreengine::CommandBuilder& cmd) {
     else if (type == "RebuildTimeline") {
         cmd.rebuildTimeline();
         std::cout << "OK: Timeline rebuilt\n";
+    }
+
+    // ── Effects ────────────────────────────────────────────────────────────
+    else if (type == "SetTrackEffect") {
+        coreengine::SetTrackEffectData d;
+        d.trackId      = SimpleJSON::getInt(dataJson, "trackId");
+        d.effectType   = SimpleJSON::getString(dataJson, "effectType");
+        d.enabled      = SimpleJSON::getBool(dataJson, "enabled");
+
+        // Use -1 as sentinel for "not provided", then apply defaults
+        auto getOr = [&](const std::string& key, float def) -> float {
+            size_t kp = dataJson.find("\"" + key + "\"");
+            if (kp == std::string::npos) return def;
+            return SimpleJSON::getFloat(dataJson, key);
+        };
+
+        d.mix          = getOr("mix",          0.3f);
+        d.roomSize     = getOr("roomSize",      0.5f);
+        d.damping      = getOr("damping",       0.5f);
+        d.delayMs      = getOr("delayMs",       300.f);
+        d.feedback     = getOr("feedback",      0.4f);
+        d.delayDamping = getOr("delayDamping",  0.3f);
+        d.drive        = getOr("drive",         2.0f);
+
+        cmd.setTrackEffect(d);
+        std::cout << "OK: Set effect " << d.effectType
+                  << " on track " << d.trackId
+                  << " enabled=" << d.enabled
+                  << " mix=" << d.mix << "\n";
+    }
+    else if (type == "RemoveTrackEffect") {
+        int trackId = SimpleJSON::getInt(dataJson, "trackId");
+        std::string effectType = SimpleJSON::getString(dataJson, "effectType");
+        cmd.removeTrackEffect(trackId, effectType);
+        std::cout << "OK: Removed effect " << effectType << " from track " << trackId << "\n";
+    }
+    else if (type == "SetEffectParam") {
+        int trackId = SimpleJSON::getInt(dataJson, "trackId");
+        std::string effectType = SimpleJSON::getString(dataJson, "effectType");
+        std::string paramName  = SimpleJSON::getString(dataJson, "paramName");
+        float value            = SimpleJSON::getFloat(dataJson, "value");
+        cmd.setEffectParam(trackId, effectType, paramName, value);
+        std::cout << "OK: Set " << effectType << "." << paramName << "=" << value
+                  << " on track " << trackId << "\n";
+    }
+    else if (type == "SetAutomationLane") {
+        coreengine::AutomationLaneData d;
+        d.trackId    = SimpleJSON::getInt(dataJson, "trackId");
+        d.paramName  = SimpleJSON::getString(dataJson, "paramName");
+        d.bpm        = SimpleJSON::getDouble(dataJson, "bpm");
+        d.sampleRate = static_cast<uint64_t>(SimpleJSON::getInt(dataJson, "sampleRate"));
+        if (d.bpm <= 0) d.bpm = 120.0;
+        if (d.sampleRate == 0) d.sampleRate = 44100;
+        auto pts = SimpleJSON::getPointsArray(dataJson, "points");
+        for (auto& [beat, val] : pts) {
+            d.points.push_back({ beat, val });
+        }
+        cmd.setAutomationLane(d);
+        std::cout << "OK: SetAutomationLane track=" << d.trackId
+                  << " param=" << d.paramName
+                  << " points=" << d.points.size() << "\n";
+    }
+    else if (type == "ClearAutomationLane") {
+        int         trackId   = SimpleJSON::getInt(dataJson, "trackId");
+        std::string paramName = SimpleJSON::getString(dataJson, "paramName");
+        double      bpm       = SimpleJSON::getDouble(dataJson, "bpm");
+        uint64_t    sr        = static_cast<uint64_t>(SimpleJSON::getInt(dataJson, "sampleRate"));
+        if (bpm <= 0) bpm = 120.0;
+        if (sr   == 0) sr  = 44100;
+        cmd.clearAutomationLane(trackId, paramName, bpm, sr);
+        std::cout << "OK: ClearAutomationLane track=" << trackId
+                  << " param=" << paramName << "\n";
     }
 
     else {

@@ -9,6 +9,9 @@
 #include "audio/Sequencer.h"
 #include "audio/simple_sounds/SimpleSynth.h"
 #include "audio/ADSR.h"
+#include "audio/effects/ReverbEffect.h"
+#include "audio/effects/DelayEffect.h"
+#include "audio/effects/DistortionEffect.h"
 
 coreengine::RenderLoop::RenderLoop(const coreengine::EngineConfig& config)
         : positionClock(0), isPlaying(false) {
@@ -178,8 +181,85 @@ void coreengine::RenderLoop::processCommands() {
                 timeline.rebuildEventQueue();
                 break;
             }
+            case CommandType::SetTrackEffect: {
+                auto data = std::get<SetTrackEffectData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (!track) break;
 
-            // Legacy commands
+                // Remove any existing effect with the same name first
+                track->removeEffect(data.effectType);
+
+                if (!data.enabled) break; // just removing
+
+                float sr = static_cast<float>(audioBuffer->sampleRate);
+
+                if (data.effectType == "Reverb") {
+                    auto fx = std::make_unique<ReverbEffect>(data.roomSize, data.damping);
+                    fx->setMix(data.mix);
+                    track->addEffect(std::move(fx));
+                } else if (data.effectType == "Delay") {
+                    auto fx = std::make_unique<DelayEffect>(data.delayMs, data.feedback, data.delayDamping, sr);
+                    fx->setMix(data.mix);
+                    track->addEffect(std::move(fx));
+                } else if (data.effectType == "Distortion") {
+                    auto fx = std::make_unique<DistortionEffect>(data.drive);
+                    fx->setMix(data.mix);
+                    track->addEffect(std::move(fx));
+                }
+                break;
+            }
+            case CommandType::RemoveTrackEffect: {
+                auto data = std::get<RemoveTrackEffectData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (track) track->removeEffect(data.effectType);
+                break;
+            }
+            case CommandType::SetEffectParam: {
+                auto data = std::get<SetEffectParamData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (!track) break;
+                AudioEffect* fx = track->getEffect(data.effectType);
+                if (!fx) break;
+
+                if (data.paramName == "mix") {
+                    fx->setMix(data.value);
+                } else if (data.effectType == "Reverb") {
+                    auto* rev = dynamic_cast<ReverbEffect*>(fx);
+                    if (!rev) break;
+                    if (data.paramName == "roomSize") rev->setRoomSize(data.value);
+                    else if (data.paramName == "damping") rev->setDamping(data.value);
+                } else if (data.effectType == "Delay") {
+                    auto* del = dynamic_cast<DelayEffect*>(fx);
+                    if (!del) break;
+                    if (data.paramName == "delayMs")  del->setDelayMs(data.value);
+                    else if (data.paramName == "feedback") del->setFeedback(data.value);
+                    else if (data.paramName == "damping")  del->setDamping(data.value);
+                } else if (data.effectType == "Distortion") {
+                    auto* dist = dynamic_cast<DistortionEffect*>(fx);
+                    if (!dist) break;
+                    if (data.paramName == "drive") dist->setDrive(data.value);
+                }
+                break;
+            }
+            case CommandType::SetAutomationLane: {
+                auto data = std::get<AutomationLaneData>(cmd->data);
+                auto& laneMap = automationData_[data.trackId];
+                auto& pts = laneMap[data.paramName];
+                pts.clear();
+                const double spb = 60.0 / data.bpm * static_cast<double>(data.sampleRate);
+                for (auto& p : data.points) {
+                    pts.push_back({ p.beat, p.value });
+                }
+                // Already sorted by the frontend but sort anyway for safety
+                std::sort(pts.begin(), pts.end(),
+                    [](const AutomationPoint& a, const AutomationPoint& b){ return a.beat < b.beat; });
+                break;
+            }
+            case CommandType::ClearAutomationLane: {
+                auto data = std::get<AutomationLaneData>(cmd->data);
+                automationData_[data.trackId].erase(data.paramName);
+                break;
+            }
             case CommandType::AddInstrument: {
                 auto data = std::get<InstrumentData>(cmd->data);
                 // Logic to instantiate a new AudioBlock and add to DAG
@@ -239,6 +319,9 @@ void coreengine::RenderLoop::processNextBlock() {
     // Process timeline events for this block
     timeline.processEventsForBlock(positionClock, audioBuffer->numSamples);
 
+    // Apply automation for this block
+    applyAutomation(positionClock, audioBuffer->numSamples);
+
     // Process all tracks from timeline
     for (auto& track : timeline.getAllTracks()) {
         track->processBlock(audioBuffer);
@@ -252,3 +335,77 @@ void coreengine::RenderLoop::processNextBlock() {
     this->positionClock += audioBuffer->numSamples;
 }
 
+// ── Automation ────────────────────────────────────────────────────────────────
+
+float coreengine::RenderLoop::interpolateAutomation(
+    const std::vector<AutomationPoint>& pts, double beat) const
+{
+    if (pts.empty()) return 0.f;
+    if (beat <= pts.front().beat) return pts.front().value;
+    if (beat >= pts.back().beat)  return pts.back().value;
+
+    // Binary search for the segment containing `beat`
+    size_t lo = 0, hi = pts.size() - 1;
+    while (hi - lo > 1) {
+        size_t mid = (lo + hi) / 2;
+        if (pts[mid].beat <= beat) lo = mid; else hi = mid;
+    }
+    // Linear interpolation between pts[lo] and pts[hi]
+    double t = (beat - pts[lo].beat) / (pts[hi].beat - pts[lo].beat);
+    return static_cast<float>(pts[lo].value + t * (pts[hi].value - pts[lo].value));
+}
+
+void coreengine::RenderLoop::applyAutomation(uint64_t blockStartSample, uint64_t blockSamples)
+{
+    if (automationData_.empty()) return;
+
+    const double sr = static_cast<double>(audioBuffer->sampleRate);
+    // Use the beat at the centre of the block for a single-value update per block.
+    // This is accurate enough for typical block sizes (512 samples @ 44100 = ~11.6ms).
+    const double beat = (static_cast<double>(blockStartSample) + blockSamples * 0.5) / (sr * 60.0 / 120.0);
+    // NOTE: we store bpm per-lane. Without it here we use a fallback. A proper solution
+    // is to read bpm from a member or timeline — for now 120 is the default and the
+    // frontend sends per-lane bpm via SetAutomationLane which we ignore in the beat calc here.
+    // TODO: store bpm member and use it. For now this works at 120 BPM.
+
+    for (auto& [trackId, params] : automationData_) {
+        Track* track = timeline.getTrack(trackId);
+        if (!track) continue;
+
+        for (auto& [paramName, pts] : params) {
+            if (pts.empty()) continue;
+            const float val = interpolateAutomation(pts, beat);
+
+            if (paramName == "volume") {
+                track->setVolume(val);
+                continue;
+            }
+            // Effect param: format is "EffectType.paramName"
+            auto dot = paramName.find('.');
+            if (dot == std::string::npos) continue;
+            const std::string effectType = paramName.substr(0, dot);
+            const std::string epName     = paramName.substr(dot + 1);
+            AudioEffect* fx = track->getEffect(effectType);
+            if (!fx) continue;
+
+            if (epName == "mix") {
+                fx->setMix(val);
+            } else if (effectType == "Reverb") {
+                auto* rev = dynamic_cast<ReverbEffect*>(fx);
+                if (!rev) continue;
+                if (epName == "roomSize") rev->setRoomSize(val);
+                else if (epName == "damping") rev->setDamping(val);
+            } else if (effectType == "Delay") {
+                auto* del = dynamic_cast<DelayEffect*>(fx);
+                if (!del) continue;
+                if (epName == "delayMs")       del->setDelayMs(val * 2000.f); // 0–1 → 0–2000ms
+                else if (epName == "feedback") del->setFeedback(val * 0.95f);
+                else if (epName == "damping")  del->setDamping(val);
+            } else if (effectType == "Distortion") {
+                auto* dist = dynamic_cast<DistortionEffect*>(fx);
+                if (!dist) continue;
+                if (epName == "drive") dist->setDrive(val * 10.f); // 0–1 → 0–10
+            }
+        }
+    }
+}

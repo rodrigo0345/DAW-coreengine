@@ -4,7 +4,7 @@ import {
   MIDI_RANGE, MIN_MIDI, MAX_MIDI,
   isBlackKey, midiNoteName, snapBeat, uid,
 } from '../helpers/music';
-import { syncTrackToEngine } from '../helpers/engine';
+import { syncPatternToEngine } from '../helpers/engine';
 import './PianoRoll.css';
 
 // ─── Layout constants ────────────────────────────────────────────────────────
@@ -17,8 +17,9 @@ const MIN_DURATION = 0.25;
 
 export default function PianoRoll() {
   const {
-    selectedTrack, tracks, notes,
-    addNote, updateNote, updateNotes, removeNote,
+    selectedTrack, tracks,
+    activePatternId, patterns,
+    addNoteToPattern, removeNoteFromPattern,
     selectNote, selectedNotes, clearSelection,
     bpm, sampleRate, snapValue,
     currentPosition, setCurrentPosition,
@@ -55,15 +56,14 @@ export default function PianoRoll() {
   const forceRender = () => setTick((t) => t + 1);
 
   const track = tracks.find((t) => t.id === selectedTrack);
-  const trackNotes = useMemo(
-    () => notes.filter((n) => n.trackId === selectedTrack),
-    [notes, selectedTrack],
-  );
+  const pattern = patterns.find(p => p.id === activePatternId);
+  const trackNotes = pattern ? pattern.notes : [];
 
   const totalBeats = useMemo(() => {
-    const max = Math.max(32, ...trackNotes.map((n) => n.startBeat + n.durationBeats));
-    return Math.ceil(max / 4) * 4 + 4; // always pad 1 extra bar
-  }, [trackNotes]);
+    // Default to at least 100 bars (400 beats) or extend if notes go further
+    const max = Math.max(pattern?.duration || 16, ...trackNotes.map((n) => n.startBeat + n.durationBeats));
+    return Math.ceil(max / 4) * 4 + 4;
+  }, [trackNotes, pattern]);
 
   const playbackBeat = useMemo(() => {
     const spb = (60 / bpm) * sampleRate;
@@ -78,23 +78,19 @@ export default function PianoRoll() {
     if (rulerScrollRef.current) rulerScrollRef.current.scrollLeft = el.scrollLeft;
   }, []);
 
-  // ── Zoom mouse handlers ───────────────────────────────────────────────────
+  // ── Zoom + scroll wheel handler ──────────────────────────────────────────
   const handleWheel = useCallback(
     (e: WheelEvent) => {
       if (e.ctrlKey) {
+        // Ctrl+scroll → zoom only, everything else falls through to native scroll
         e.preventDefault();
         e.stopPropagation();
 
-        // Calculate zoom anchor (beat under mouse)
         const el = contentRef.current;
         if (!el) return;
 
         const rect = el.getBoundingClientRect();
         const cursorX = e.clientX - rect.left;
-        // Use current pixelsPerBeat from store (captured in closure or ref? Store is best)
-        // Note: access latest state via useStore.getState() if closure is stale,
-        // but here we depend on [zoomIn, zoomOut].
-        // We need pixelsPerBeat in dependency or read it from ref/store.
         const currentPx = useStore.getState().pixelsPerBeat;
         const beat = (el.scrollLeft + cursorX) / currentPx;
 
@@ -103,6 +99,8 @@ export default function PianoRoll() {
         if (e.deltaY < 0) zoomIn();
         else zoomOut();
       }
+      // All other scroll events (vertical, horizontal, shift+wheel) fall through
+      // to the browser's native scroll handling on pr-content
     },
     [zoomIn, zoomOut]
   );
@@ -117,12 +115,28 @@ export default function PianoRoll() {
   }, [pixelsPerBeat]);
 
   useEffect(() => {
-    // Attach to the main container to capture wheel events everywhere (keys, grid, etc.)
-    const el = containerRef.current;
+    // Attach to pr-content (the scrollable element) so native scroll works naturally.
+    // Only Ctrl+wheel is intercepted for zoom.
+    const el = contentRef.current;
     if (!el) return;
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
+
+  // Forward wheel events on the piano keys panel to pr-content so scrolling
+  // while hovering the keys scrolls the grid vertically.
+  useEffect(() => {
+    const keys = keysRef.current;
+    const content = contentRef.current;
+    if (!keys || !content) return;
+    const onKeysWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) return; // let zoom handler deal with it
+      e.preventDefault();
+      content.scrollTop += e.deltaY;
+    };
+    keys.addEventListener('wheel', onKeysWheel, { passive: false });
+    return () => keys.removeEventListener('wheel', onKeysWheel);
+  }, []);
 
   // ── Global mouse handlers (attached only while dragging) ───────────────────
   useEffect(() => {
@@ -155,10 +169,10 @@ export default function PianoRoll() {
         if (noteEl) {
           const id = noteEl.getAttribute('data-id');
           if (id) {
-            // Check if note still exists in store (might have been just deleted)
-            const exists = useStore.getState().notes.some((n) => n.id === id);
-            if (exists) {
-              removeNote(id);
+            // Check if note still exists in PATTERN (not global store notes)
+            const p = useStore.getState().patterns.find(p => p.id === activePatternId);
+            if (p && p.notes.some(n => n.id === id)) {
+              removeNoteFromPattern(activePatternId, id);
               d.erasedAny = true;
             }
           }
@@ -182,26 +196,61 @@ export default function PianoRoll() {
         return;
       }
 
-      // Batch update logic
-      // We iterate over everything in d.startState (which includes selected notes + the dragged note)
-      const updates: { id: string; changes: Partial<typeof notes[0]> }[] = [];
+      // Batch update logic — clamp the ENTIRE GROUP as a unit first so all
+      // notes stop together when any one of them hits a boundary.
+      const updates: { id: string; changes: Partial<typeof trackNotes[0]> }[] = [];
 
-      Object.entries(d.startState).forEach(([id, start]) => {
-        if (d.mode === 'resize') {
-          const raw = start.durationBeats + dx / pixelsPerBeat;
-          const snapped = snapValue > 0 ? Math.max(snapValue, snapBeat(raw, snapValue)) : Math.max(MIN_DURATION, raw);
+      if (d.mode === 'resize') {
+        Object.entries(d.startState).forEach(([id, start]) => {
+          const raw     = start.durationBeats + dx / pixelsPerBeat;
+          const snapped = snapValue > 0
+            ? Math.max(snapValue, snapBeat(raw, snapValue))
+            : Math.max(MIN_DURATION, raw);
           updates.push({ id, changes: { durationBeats: snapped } });
-        } else {
-          // Move
-          const rawBeat = start.startBeat + dx / pixelsPerBeat;
-          const newBeat = Math.max(0, snapValue > 0 ? snapBeat(rawBeat, snapValue) : rawBeat);
-          const newMidi = Math.min(MAX_MIDI, Math.max(MIN_MIDI, start.startMidi - Math.round(dy / NOTE_H)));
+        });
+      } else {
+        // ── Move: pre-compute clamped deltas for the whole group ────────────
+        const rawDeltaBeat = dx / pixelsPerBeat;
+        const rawDeltaMidi = -Math.round(dy / NOTE_H);
+
+        // Clamp beat delta so no note goes before beat 0
+        const minStartBeat = Math.min(...Object.values(d.startState).map(s => s.startBeat));
+        const snappedDeltaBeat = snapValue > 0
+          ? snapBeat(rawDeltaBeat, snapValue)
+          : rawDeltaBeat;
+        const clampedBeatDelta = Math.max(-minStartBeat, snappedDeltaBeat);
+
+        // Clamp midi delta so no note goes outside [MIN_MIDI, MAX_MIDI]
+        const midiVals = Object.values(d.startState).map(s => s.startMidi);
+        const minMidi  = Math.min(...midiVals);
+        const maxMidi  = Math.max(...midiVals);
+        const clampedMidiDelta = Math.min(
+          MAX_MIDI - maxMidi,
+          Math.max(MIN_MIDI - minMidi, rawDeltaMidi),
+        );
+
+        Object.entries(d.startState).forEach(([id, start]) => {
+          const newBeat = Math.max(0, start.startBeat + clampedBeatDelta);
+          const newMidi = start.startMidi + clampedMidiDelta;
           updates.push({ id, changes: { startBeat: newBeat, midiNote: newMidi } });
-        }
-      });
+        });
+      }
 
       if (updates.length > 0) {
-        updateNotes(updates);
+        // Bypass the per-frame pushUndo inside updateNotesInPattern by writing
+        // directly to store state — undo was already snapshotted on mousedown.
+        useStore.setState(s => ({
+          patterns: s.patterns.map(p => {
+            if (p.id !== activePatternId) return p;
+            return {
+              ...p,
+              notes: p.notes.map(n => {
+                const u = updates.find(x => x.id === n.id);
+                return u ? { ...n, ...u.changes } : n;
+              }),
+            };
+          }),
+        }));
       }
       forceRender();
     };
@@ -255,17 +304,15 @@ export default function PianoRoll() {
         newSelection.forEach(id => selectNote(id, true));
       }
       else if (d.mode === 'erase') {
-        if (d.erasedAny && track) {
-          syncTrackToEngine(track.id);
+        if (d.erasedAny) {
+          syncPatternToEngine(activePatternId);
         }
       } else if (d.mode === 'scrub') {
         window.electronAPI?.seek(useStore.getState().currentPosition).catch(console.error);
-      } else if (d.hasMoved && d.noteId) {
-        const note = useStore.getState().notes.find((n) => n.id === d.noteId);
-        if (note) syncTrackToEngine(note.trackId);
+      } else if (d.hasMoved) {
+        // Note moved/resized -> sync pattern (covers single-note AND group drags)
+        syncPatternToEngine(activePatternId);
       } else if (!d.hasMoved && d.shouldDeselectOthers) {
-        // Did not move, and we clicked a note that was part of a selection.
-        // This implies the user intended to select JUST this note, not drag the group.
         selectNote(d.noteId, false);
       }
 
@@ -283,7 +330,7 @@ export default function PianoRoll() {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
-  }, [bpm, sampleRate, snapValue, updateNotes, setCurrentPosition, removeNote, track, pixelsPerBeat, trackNotes, selectNote, clearSelection]);
+  }, [bpm, sampleRate, snapValue, setCurrentPosition, removeNoteFromPattern, activePatternId, pattern, pixelsPerBeat, trackNotes, selectNote, clearSelection]);
 
   // ── Note mouse-down (move / resize) ────────────────────────────────────────
   const onNoteDown = useCallback(
@@ -293,7 +340,7 @@ export default function PianoRoll() {
 
       // Right click = Erase
       if (e.button === 2) {
-        removeNote(noteId);
+        removeNoteFromPattern(activePatternId, noteId);
         drag.current = {
           active: true,
           mode: 'erase',
@@ -314,34 +361,25 @@ export default function PianoRoll() {
 
       pushUndo();
 
+      // ...existing selection logic...
       const isSelected = selectedNotes.includes(noteId);
       const isModifier = e.shiftKey || e.ctrlKey;
-
-      // Determine what we are dragging immediately to avoid "double click" issue
-      // (State updates are async, so we calculate effective selection locally)
       let draggingIds: string[] = [];
       let shouldDeselectOthers = false;
 
       if (isModifier) {
-        // Toggle / Add behavior
         if (isSelected) {
-          // Toggling off?
           selectNote(noteId, true);
           draggingIds = selectedNotes.filter(id => id !== noteId);
         } else {
-          // Adding
           selectNote(noteId, true);
           draggingIds = [...selectedNotes, noteId];
         }
       } else {
         if (isSelected) {
-          // Clicked an already selected note -> Drag group
-          // Don't call selectNote yet, as it might deselect others.
-          // We defer deselection to onUp if no move occurred.
           draggingIds = [...selectedNotes];
           shouldDeselectOthers = true;
         } else {
-          // Clicked unselected -> Exclusive select and drag
           selectNote(noteId, false);
           draggingIds = [noteId];
         }
@@ -354,7 +392,6 @@ export default function PianoRoll() {
         hasMoved: false,
         originX: e.clientX,
         originY: e.clientY,
-        // Calculate start state based on our LOCAL draggingIds, not stale store state
         startState: Object.fromEntries(
           draggingIds.map((id) => {
             const n = trackNotes.find((nt) => nt.id === id);
@@ -366,12 +403,14 @@ export default function PianoRoll() {
         shouldDeselectOthers,
       };
     },
-    [trackNotes, selectNote, pushUndo, selectedNotes, removeNote],
+    [trackNotes, selectNote, pushUndo, selectedNotes, removeNoteFromPattern, activePatternId],
   );
 
   // ── Grid click → add note (only fires if mouse didn't move) ────────────────
   const onGridMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      e.preventDefault(); // prevent text selection / native drag during note editing
+
       // Right click on grid -> start eraser
       if (e.button === 2) {
         drag.current = {
@@ -383,40 +422,39 @@ export default function PianoRoll() {
           originY: e.clientY,
           startState: {},
           erasedAny: false,
+          selectionBox: null,
+          shouldDeselectOthers: false
         };
         return;
       }
 
       // Ctrl + Left Click -> Box Select
       if (e.button === 0 && e.ctrlKey) {
+        // ...existing box select logic...
         const rect = gridRef.current?.getBoundingClientRect();
         if (!rect) return;
-
         drag.current = {
-          active: true,
-          mode: 'select',
-          noteId: '',
-          hasMoved: false,
-          originX: e.clientX - rect.left,
-          originY: e.clientY - rect.top,
-          startState: {},
-          erasedAny: false,
-          selectionBox: { x: e.clientX - rect.left, y: e.clientY - rect.top, w: 0, h: 0 }
+            active: true,
+            mode: 'select',
+            noteId: '',
+            hasMoved: false,
+            originX: e.clientX - rect.left,
+            originY: e.clientY - rect.top,
+            startState: {},
+            erasedAny: false,
+            selectionBox: { x: e.clientX - rect.left, y: e.clientY - rect.top, w: 0, h: 0 },
+            shouldDeselectOthers: false
         };
         return;
       }
 
-      if (e.button !== 0 || !track) return;
+      if (e.button !== 0 || !activePatternId) return;
 
-      // Store a flag: if mouseup fires without moving, we add a note
+      // ...existing code...
       const rect = gridRef.current?.getBoundingClientRect();
       if (!rect) return;
-
-      // FIX: getBoundingClientRect() on the grid content already accounts for scroll.
-      // Do NOT add scrollLeft/scrollTop again.
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-
       const startClientX = e.clientX;
       const startClientY = e.clientY;
 
@@ -425,9 +463,8 @@ export default function PianoRoll() {
         const dx = upEvt.clientX - startClientX;
         const dy = upEvt.clientY - startClientY;
         if (Math.hypot(dx, dy) > MOVE_THRESHOLD) return;
-        if (drag.current.active) return; // we were dragging a note
+        if (drag.current.active) return;
 
-        // Calculate grid position
         const rawBeat = x / pixelsPerBeat;
         const beat = snapValue > 0 ? snapBeat(rawBeat, snapValue) : Math.floor(rawBeat);
         const midi = MAX_MIDI - Math.floor(y / NOTE_H);
@@ -435,38 +472,28 @@ export default function PianoRoll() {
 
         const newNote = {
           id: uid(),
-          trackId: track.id,
+          trackId: selectedTrack || 0, // Ignored in pattern usually, but ok
           startBeat: beat,
           durationBeats: Math.max(snapValue || 1, 1),
           midiNote: midi,
           velocity: 100,
         };
-        addNote(newNote);
-        syncTrackToEngine(track.id);
+        addNoteToPattern(activePatternId, newNote);
+        syncPatternToEngine(activePatternId);
         clearSelection();
       };
 
       window.addEventListener('mouseup', onUp, { once: true });
     },
-    [track, addNote, snapValue, clearSelection, pixelsPerBeat],
+    [activePatternId, selectedTrack, addNoteToPattern, snapValue, clearSelection, pixelsPerBeat],
   );
 
-  // ── Right-click → instant delete (no confirm dialog) ───────────────────────
-  const onNoteContext = useCallback(
-    (e: React.MouseEvent, noteId: string) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const n = notes.find((nt) => nt.id === noteId);
-      removeNote(noteId);
-      if (n) syncTrackToEngine(n.trackId);
-    },
-    [removeNote, notes],
-  );
 
   // ── Ruler scrub ────────────────────────────────────────────────────────────
   const onRulerDown = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
+      e.preventDefault();
       const rect = rulerScrollRef.current?.getBoundingClientRect();
       if (!rect) return;
       const scrollLeft = rulerScrollRef.current?.scrollLeft ?? 0;
@@ -481,20 +508,21 @@ export default function PianoRoll() {
         hasMoved: false,
         originX: e.clientX,
         originY: e.clientY,
-        startBeat: 0,
-        startMidi: 0,
-        startDuration: 0,
+        startState: {},
+        erasedAny: false,
+        selectionBox: null,
+        shouldDeselectOthers: false,
       };
     },
     [bpm, sampleRate, setCurrentPosition],
   );
 
   // ── Empty state ────────────────────────────────────────────────────────────
-  if (!track) {
+  if (!pattern) {
     return (
       <div className="pr">
         <div className="pr-empty">
-          <span>Select a track to open the Piano Roll</span>
+          <span>Select or Create a Pattern to edit notes</span>
         </div>
       </div>
     );
@@ -508,7 +536,7 @@ export default function PianoRoll() {
     <div className="pr" ref={containerRef} onContextMenu={(e) => e.preventDefault()}>
       {/* ── Header bar ──────────────────────────────────────────────────── */}
       <div className="pr-toolbar">
-        <span className="pr-title">{track.name}</span>
+        <span className="pr-title">{track ? track.name : 'No Track Selected'}</span>
         <span className="pr-badge">{trackNotes.length} notes</span>
         <div className="pr-snap">
           <label>Snap</label>
@@ -581,6 +609,8 @@ export default function PianoRoll() {
             className="pr-grid"
             ref={gridRef}
             style={{ width: gridW, height: gridH }}
+            draggable={false}
+            onDragStart={e => e.preventDefault()}
             onMouseDown={onGridMouseDown}
           >
             {/* Selection Box */}
@@ -634,7 +664,7 @@ export default function PianoRoll() {
                     top: y,
                     width: Math.max(8, note.durationBeats * pixelsPerBeat - 1),
                     height: NOTE_H - 1,
-                    background: track.color,
+                    background: track?.color || '#555', // Fallback color
                     opacity: note.velocity / 127 * 0.5 + 0.5,
                   }}
                   onMouseDown={(e) => onNoteDown(e, note.id, false)}

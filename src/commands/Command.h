@@ -39,6 +39,15 @@ namespace coreengine {
         SetADSR,
         RebuildTimeline,
 
+        // Effects
+        SetTrackEffect,    // add or replace a named effect on a track
+        RemoveTrackEffect, // remove effect by name
+        SetEffectParam,    // set a float param on a named effect
+
+        // Automation
+        SetAutomationLane,   // replace all points for a track/param combo
+        ClearAutomationLane, // clear all points for a track/param combo
+
         // Legacy
         AddInstrument,
         SetTimestamp,
@@ -116,27 +125,76 @@ namespace coreengine {
 
     struct ADSRData {
         int trackId;
-        float attack;   // seconds
-        float decay;     // seconds
-        float sustain;   // 0.0–1.0
-        float release;   // seconds
+        float attack;
+        float decay;
+        float sustain;
+        float release;
+    };
+
+    // effect type strings: "Reverb" | "Delay" | "Distortion"
+    struct SetTrackEffectData {
+        int         trackId;
+        std::string effectType; // "Reverb", "Delay", "Distortion"
+        bool        enabled;
+        float       mix;        // 0–1
+        // reverb
+        float roomSize = 0.5f;
+        float damping  = 0.5f;
+        // delay
+        float delayMs  = 300.f;
+        float feedback = 0.4f;
+        float delayDamping = 0.3f;
+        // distortion
+        float drive = 2.0f;
+    };
+
+    struct RemoveTrackEffectData {
+        int         trackId;
+        std::string effectType;
+    };
+
+    // Generic float param setter: paramName in {"mix","roomSize","damping","delayMs","feedback","drive"}
+    struct SetEffectParamData {
+        int         trackId;
+        std::string effectType;
+        std::string paramName;
+        float       value;
+    };
+
+    struct AutomationPointData {
+        double beat;   // position in beats
+        float  value;  // 0–1 normalised
+    };
+
+    // Replaces all automation points for one track/param combo in one shot.
+    // paramName encodes both kind and param, e.g. "volume", "Reverb.mix", "Delay.feedback"
+    struct AutomationLaneData {
+        int         trackId;
+        std::string paramName;      // "volume" | "Reverb.mix" | "Delay.delayMs" | …
+        std::vector<AutomationPointData> points;
+        double bpm;
+        uint64_t sampleRate;
     };
 
     using CommandData = std::variant<
-        std::monostate,       // Empty/None
-        NoteData,             // NoteOn, NoteOff
-        InstrumentData,       // AddInstrument
-        TimestampData,        // SetTimestamp
-        ParamData,            // Volume, Pan, VST Params
-        AddTrackData,         // AddTrack
-        TrackControlData,     // SetTrackVolume, SetTrackMute, SetTrackSolo, RemoveTrack
-        NoteEventData,        // AddNote (sample-based)
-        NoteEventMusicalData, // AddNote (beat-based)
-        ChordData,            // AddChord
-        MelodyData,           // AddMelody
-        ArpeggioData,         // AddArpeggio
-        SeekData,             // Seek
-        ADSRData              // SetADSR
+        std::monostate,
+        NoteData,
+        InstrumentData,
+        TimestampData,
+        ParamData,
+        AddTrackData,
+        TrackControlData,
+        NoteEventData,
+        NoteEventMusicalData,
+        ChordData,
+        MelodyData,
+        ArpeggioData,
+        SeekData,
+        ADSRData,
+        SetTrackEffectData,
+        RemoveTrackEffectData,
+        SetEffectParamData,
+        AutomationLaneData
     >;
 
     struct Command {

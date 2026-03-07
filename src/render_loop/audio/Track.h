@@ -11,6 +11,7 @@
 #include <algorithm>
 #include "Instrument.h"
 #include "TimelineEvent.h"
+#include "EffectChain.h"
 
 namespace coreengine {
 
@@ -58,11 +59,26 @@ namespace coreengine {
         // Clear all events
         void clearEvents() { events.clear(); }
 
+        // ── Effect chain API ───────────────────────────────────────────────
+        void addEffect(std::unique_ptr<AudioEffect> effect) {
+            effectChain_.addEffect(std::move(effect));
+        }
+
+        void removeEffect(const std::string& name) {
+            effectChain_.removeEffectByName(name);
+        }
+
+        AudioEffect* getEffect(const std::string& name) {
+            return effectChain_.getEffectByName(name);
+        }
+
+        EffectChain& getEffectChain() { return effectChain_; }
+
         // Process audio for this track into the output buffer
         void processBlock(std::shared_ptr<AudioBuffer> buffer) {
             if (!instrument || isMuted) return;
 
-            const auto numSamples = buffer->numSamples;
+            const auto numSamples  = buffer->numSamples;
             const auto numChannels = buffer->channels.size();
 
             // Ensure scratch buffers are large enough
@@ -86,6 +102,9 @@ namespace coreengine {
             // Let the instrument render into the scratch buffer
             instrument->processBlock(tmpBuf);
 
+            // ── Run effect chain on the scratch buffer ─────────────────────
+            effectChain_.process(tmpBuf);
+
             // Mix scratch into the real output, applying track volume
             for (size_t c = 0; c < numChannels; ++c) {
                 for (size_t s = 0; s < numSamples; ++s) {
@@ -99,10 +118,11 @@ namespace coreengine {
         std::string trackName;
         std::unique_ptr<Instrument> instrument;
         std::vector<TimelineEvent> events;
+        EffectChain effectChain_;
 
-        bool isMuted = false;
-        bool isSolo = false;
-        float volume = 1.0f;
+        bool  isMuted = false;
+        bool  isSolo  = false;
+        float volume  = 1.0f;
 
         // Per-track scratch buffers for safe mixing
         std::vector<std::vector<float>> scratchChannels_;

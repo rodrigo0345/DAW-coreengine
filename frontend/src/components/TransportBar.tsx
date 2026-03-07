@@ -12,7 +12,12 @@ const fmtTime = (samples: number, sr = 44100) => {
 };
 
 export default function TransportBar() {
-  const { isPlaying, currentPosition, bpm, sampleRate, setBpm, setIsPlaying, setCurrentPosition, tracks } = useStore();
+  const {
+    isPlaying, currentPosition, bpm, sampleRate,
+    setBpm, setIsPlaying, setCurrentPosition,
+    patterns, activePatternId, setActivePattern, createPattern
+  } = useStore();
+
   const [hasEngine, setHasEngine] = useState(false);
 
   useEffect(() => { setHasEngine(!!window.electronAPI); }, []);
@@ -37,6 +42,10 @@ export default function TransportBar() {
     for (const t of useStore.getState().tracks) {
       await syncTrackToEngine(t.id);
     }
+  };
+
+  const handleCreatePattern = () => {
+    createPattern();
   };
 
   return (
@@ -70,6 +79,23 @@ export default function TransportBar() {
             <button onClick={() => updateBpm(bpm + 1)}>+</button>
           </div>
         </div>
+
+        <div className="transport-sep" />
+
+        <div className="transport-field">
+          <span className="transport-label">Pattern</span>
+          <select
+            className="pattern-select"
+            value={activePatternId}
+            onChange={(e) => setActivePattern(e.target.value)}
+          >
+            {patterns.map(p => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <button className="transport-btn-small" onClick={handleCreatePattern} title="New Pattern">+</button>
+        </div>
+
         {!hasEngine && <span className="transport-warn">⚠ No engine</span>}
       </div>
     </div>

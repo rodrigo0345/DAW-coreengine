@@ -128,6 +128,35 @@ ipcMain.handle('track:setADSR', async (_e, data: {
   trackId: number; attack: number; decay: number; sustain: number; release: number;
 }) => sendToEngine({ type: 'SetADSR', data }));
 
+// ─── IPC: Effects ────────────────────────────────────────────────────────────
+
+ipcMain.handle('track:setEffect', async (_e, data: {
+  trackId: number; effectType: string; enabled: boolean; mix: number;
+  roomSize?: number; damping?: number;
+  delayMs?: number; feedback?: number; delayDamping?: number;
+  drive?: number;
+}) => sendToEngine({ type: 'SetTrackEffect', data }));
+
+ipcMain.handle('track:removeEffect', async (_e, data: {
+  trackId: number; effectType: string;
+}) => sendToEngine({ type: 'RemoveTrackEffect', data }));
+
+ipcMain.handle('track:setEffectParam', async (_e, data: {
+  trackId: number; effectType: string; paramName: string; value: number;
+}) => sendToEngine({ type: 'SetEffectParam', data }));
+
+// ─── IPC: Automation ─────────────────────────────────────────────────────────
+
+ipcMain.handle('track:setAutomationLane', async (_e, data: {
+  trackId: number; paramName: string;
+  points: { beat: number; value: number }[];
+  bpm: number; sampleRate: number;
+}) => sendToEngine({ type: 'SetAutomationLane', data }));
+
+ipcMain.handle('track:clearAutomationLane', async (_e, data: {
+  trackId: number; paramName: string; bpm: number; sampleRate: number;
+}) => sendToEngine({ type: 'ClearAutomationLane', data }));
+
 // ─── IPC: Generic command (for future extensibility) ─────────────────────────
 
 ipcMain.handle('send-command', async (_e, command: string) => {

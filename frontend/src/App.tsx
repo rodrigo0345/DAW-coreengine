@@ -26,6 +26,13 @@ declare global {
       setTrackSolo: (data: any) => Promise<any>;
       // ADSR
       setADSR: (data: any) => Promise<any>;
+      // Effects
+      setTrackEffect:    (data: any) => Promise<any>;
+      removeTrackEffect: (data: any) => Promise<any>;
+      setEffectParam:    (data: any) => Promise<any>;
+      // Automation
+      setAutomationLane:   (data: any) => Promise<any>;
+      clearAutomationLane: (data: any) => Promise<any>;
       // Playback
       play: () => Promise<any>;
       stop: () => Promise<any>;

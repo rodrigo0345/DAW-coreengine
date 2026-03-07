@@ -2,6 +2,17 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  /* Disable text selection everywhere — DAW UI is pointer-driven */
+  user-select: none;
+  -webkit-user-select: none;
+  /* Kill the browser's native element drag (ghost images) */
+  -webkit-user-drag: none;
+}
+
+/* Re-enable selection only where the user actually types */
+input, textarea, [contenteditable] {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 :root {

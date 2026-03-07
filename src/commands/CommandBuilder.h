@@ -148,6 +148,39 @@ namespace coreengine {
         }
 
         // ============================================================
+        // Effects
+        // ============================================================
+
+        bool setTrackEffect(const SetTrackEffectData& d) {
+            return commandQueue.push(Command(CommandType::SetTrackEffect, d));
+        }
+
+        bool removeTrackEffect(int trackId, const std::string& effectType) {
+            return commandQueue.push(Command(CommandType::RemoveTrackEffect,
+                RemoveTrackEffectData{trackId, effectType}));
+        }
+
+        bool setEffectParam(int trackId, const std::string& effectType,
+                            const std::string& paramName, float value) {
+            return commandQueue.push(Command(CommandType::SetEffectParam,
+                SetEffectParamData{trackId, effectType, paramName, value}));
+        }
+
+        bool setAutomationLane(const AutomationLaneData& d) {
+            return commandQueue.push(Command(CommandType::SetAutomationLane, d));
+        }
+
+        bool clearAutomationLane(int trackId, const std::string& paramName,
+                                  double bpm, uint64_t sampleRate) {
+            AutomationLaneData d;
+            d.trackId    = trackId;
+            d.paramName  = paramName;
+            d.bpm        = bpm;
+            d.sampleRate = sampleRate;
+            return commandQueue.push(Command(CommandType::ClearAutomationLane, d));
+        }
+
+        // ============================================================
         // Real-time Note Triggers (for keyboard/MIDI input)
         // ============================================================
 

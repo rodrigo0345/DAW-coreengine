@@ -135,7 +135,8 @@
 /* Grid scroll container */
 .pr-content {
   flex: 1;
-  overflow: auto;
+  overflow-x: scroll;   /* always show horizontal scrollbar */
+  overflow-y: auto;
   background: #191919;
 }
 
@@ -143,6 +144,7 @@
 .pr-grid {
   position: relative;
   cursor: crosshair;
+  min-width: 100%;      /* never narrower than the viewport */
 }
 
 /* Row stripes */

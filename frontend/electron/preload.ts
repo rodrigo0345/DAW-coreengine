@@ -20,6 +20,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ADSR envelope
   setADSR: (data: any) => ipcRenderer.invoke('track:setADSR', data),
 
+  // Effects
+  setTrackEffect:    (data: any) => ipcRenderer.invoke('track:setEffect', data),
+  removeTrackEffect: (data: any) => ipcRenderer.invoke('track:removeEffect', data),
+  setEffectParam:    (data: any) => ipcRenderer.invoke('track:setEffectParam', data),
+
+  // Automation
+  setAutomationLane:   (data: any) => ipcRenderer.invoke('track:setAutomationLane', data),
+  clearAutomationLane: (data: any) => ipcRenderer.invoke('track:clearAutomationLane', data),
+
   // Playback
   play: () => ipcRenderer.invoke('playback:play'),
   stop: () => ipcRenderer.invoke('playback:stop'),

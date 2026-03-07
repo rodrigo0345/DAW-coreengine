@@ -33,6 +33,22 @@
 .transport-btn.pause { background: var(--warning); color: #fff; }
 .transport-btn.pause:hover:not(:disabled) { background: #e68900; }
 
+.transport-btn-small {
+  background: #444;
+  border: none;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.transport-btn-small:hover {
+  background: #555;
+}
+
 /* ── Info fields ──────────────────────────────────────────────────────────── */
 .transport-info {
   display: flex;
@@ -97,6 +113,23 @@
   justify-content: center;
 }
 .bpm-btns button:hover { background: #3a3a3a; }
+
+.transport-sep {
+  width: 1px;
+  height: 24px;
+  background: #444;
+  margin: 0 12px;
+}
+
+.pattern-select {
+  background: #333;
+  color: #eee;
+  border: 1px solid #444;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-right: 4px;
+  font-family: inherit;
+}
 
 .transport-warn {
   margin-left: auto;

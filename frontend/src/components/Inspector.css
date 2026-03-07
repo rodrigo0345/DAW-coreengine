@@ -150,3 +150,122 @@
   opacity: 0.5;
   font-style: italic;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Effects Rack
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.fx-rack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* ── Individual effect slot ───────────────────────────────────────────────── */
+.fx-panel {
+  background: var(--bg-darker);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.fx-panel.active {
+  border-color: var(--accent);
+}
+
+/* Header: name + toggle */
+.fx-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.6rem;
+  cursor: default;
+}
+.fx-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.fx-panel.active .fx-name {
+  color: var(--text-primary);
+}
+
+/* iOS-style toggle switch */
+.fx-toggle {
+  position: relative;
+  display: inline-block;
+  width: 32px;
+  height: 18px;
+  cursor: pointer;
+}
+.fx-toggle input { display: none; }
+.fx-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: #3a3a3a;
+  border-radius: 9px;
+  transition: background 0.2s;
+}
+.fx-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: #888;
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+.fx-toggle input:checked + .fx-toggle-track {
+  background: var(--accent, #4fa3e0);
+}
+.fx-toggle input:checked + .fx-toggle-track::after {
+  transform: translateX(14px);
+  background: #fff;
+}
+
+/* Knobs row */
+.fx-knobs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0.5rem 0.6rem;
+  border-top: 1px solid var(--border-color);
+  background: #161616;
+}
+
+/* ── Knob component ───────────────────────────────────────────────────────── */
+.knob-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  user-select: none;
+  min-width: 56px;
+}
+.knob-svg {
+  cursor: ns-resize;
+  display: block;
+}
+.knob-svg:active { cursor: grabbing; }
+.knob-val {
+  font-size: 0.6rem;
+  font-family: 'Courier New', monospace;
+  color: var(--accent, #4fa3e0);
+  margin-top: -2px;
+  min-height: 14px;
+  text-align: center;
+}
+.knob-label {
+  font-size: 0.58rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+

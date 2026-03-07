@@ -7,6 +7,8 @@
 #include <memory>
 #include <vector>
 
+#include <map>
+#include <string>
 #include "../commands/CommandQueue.h"
 #include "../configs/EngineConfig.h"
 #include "audio/AudioBlock.h"
@@ -46,12 +48,19 @@ namespace coreengine {
     private:
         CommandQueue commandQueue;
         Timeline timeline;
-        const uint32_t numSamples = 512; // TODO: needs to stop be static
+        const uint32_t numSamples = 512;
         std::shared_ptr<coreengine::AudioBuffer> audioBuffer;
-        uint64_t positionClock; // Global timeline position
+        uint64_t positionClock;
         bool isPlaying;
 
         std::vector<std::unique_ptr<coreengine::AudioBlock>> processorBlocks;
+
+        // ── Automation ────────────────────────────────────────────────────────
+        struct AutomationPoint { double beat; float value; };
+        // Key: trackId → (paramName → sorted points)
+        std::map<int, std::map<std::string, std::vector<AutomationPoint>>> automationData_;
+        void applyAutomation(uint64_t blockStartSample, uint64_t blockSamples);
+        float interpolateAutomation(const std::vector<AutomationPoint>& pts, double beat) const;
     };
 
 }
