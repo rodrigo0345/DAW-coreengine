@@ -1,0 +1,165 @@
+//
+// Created by rodrigo0345 on 3/7/26.
+//
+
+#ifndef DAWCOREENGINE_COMMANDBUILDER_H
+#define DAWCOREENGINE_COMMANDBUILDER_H
+
+#include "Command.h"
+#include "CommandQueue.h"
+
+namespace coreengine {
+
+    /**
+     * Helper class for building and sending commands to the audio engine.
+     * This provides a clean API for frontend applications.
+     */
+    class CommandBuilder {
+    public:
+        explicit CommandBuilder(CommandQueue& queue) : commandQueue(queue) {}
+
+        // ============================================================
+        // Playback Control Commands
+        // ============================================================
+
+        bool play() {
+            return commandQueue.push(Command(CommandType::Play));
+        }
+
+        bool stop() {
+            return commandQueue.push(Command(CommandType::Stop));
+        }
+
+        bool pause() {
+            return commandQueue.push(Command(CommandType::Pause));
+        }
+
+        bool reset() {
+            return commandQueue.push(Command(CommandType::Reset));
+        }
+
+        bool seek(uint64_t samplePosition) {
+            return commandQueue.push(Command(CommandType::Seek, SeekData{samplePosition}));
+        }
+
+        bool allNotesOff() {
+            return commandQueue.push(Command(CommandType::AllNotesOff));
+        }
+
+        // ============================================================
+        // Track Management Commands
+        // ============================================================
+
+        bool addTrack(int trackId, const std::string& name, int synthType = 0, int numVoices = 8) {
+            return commandQueue.push(Command(CommandType::AddTrack,
+                AddTrackData{trackId, name, synthType, numVoices}));
+        }
+
+        bool addSineTrack(int trackId, const std::string& name, int numVoices = 8) {
+            return addTrack(trackId, name, 0, numVoices);
+        }
+
+        bool addSquareTrack(int trackId, const std::string& name, int numVoices = 8) {
+            return addTrack(trackId, name, 1, numVoices);
+        }
+
+        bool addSawtoothTrack(int trackId, const std::string& name, int numVoices = 8) {
+            return addTrack(trackId, name, 2, numVoices);
+        }
+
+        bool addPWMTrack(int trackId, const std::string& name, int numVoices = 8) {
+            return addTrack(trackId, name, 3, numVoices);
+        }
+
+        bool removeTrack(int trackId) {
+            return commandQueue.push(Command(CommandType::RemoveTrack,
+                TrackControlData{trackId, 0.0f}));
+        }
+
+        bool clearTrack(int trackId) {
+            return commandQueue.push(Command(CommandType::ClearTrack,
+                TrackControlData{trackId, 0.0f}));
+        }
+
+        bool setTrackVolume(int trackId, float volume) {
+            return commandQueue.push(Command(CommandType::SetTrackVolume,
+                TrackControlData{trackId, volume}));
+        }
+
+        bool setTrackMute(int trackId, bool muted) {
+            return commandQueue.push(Command(CommandType::SetTrackMute,
+                TrackControlData{trackId, muted ? 1.0f : 0.0f}));
+        }
+
+        bool setTrackSolo(int trackId, bool solo) {
+            return commandQueue.push(Command(CommandType::SetTrackSolo,
+                TrackControlData{trackId, solo ? 1.0f : 0.0f}));
+        }
+
+        // ============================================================
+        // Note/Event Commands
+        // ============================================================
+
+        bool addNote(int trackId, uint64_t startSample, uint64_t durationSamples,
+                    int midiNote, float velocity = 100.0f) {
+            return commandQueue.push(Command(CommandType::AddNote,
+                NoteEventData{trackId, startSample, durationSamples, midiNote, velocity}));
+        }
+
+        bool addNoteMusical(int trackId, double startBeat, double durationBeats,
+                          int midiNote, float velocity, double bpm, uint64_t sampleRate) {
+            return commandQueue.push(Command(CommandType::AddNote,
+                NoteEventMusicalData{trackId, startBeat, durationBeats, midiNote,
+                                   velocity, bpm, sampleRate}));
+        }
+
+        bool addChord(int trackId, const std::vector<int>& notes,
+                     double startBeat, double durationBeats, float velocity,
+                     double bpm, uint64_t sampleRate) {
+            return commandQueue.push(Command(CommandType::AddChord,
+                ChordData{trackId, notes, startBeat, durationBeats, velocity, bpm, sampleRate}));
+        }
+
+        bool addMelody(int trackId, const std::vector<int>& midiNotes,
+                      const std::vector<double>& startBeats,
+                      const std::vector<double>& durationBeats,
+                      const std::vector<float>& velocities,
+                      double bpm, uint64_t sampleRate) {
+            return commandQueue.push(Command(CommandType::AddMelody,
+                MelodyData{trackId, midiNotes, startBeats, durationBeats,
+                         velocities, bpm, sampleRate}));
+        }
+
+        bool addArpeggio(int trackId, const std::vector<int>& notes,
+                        double startBeat, double noteLength, int repetitions,
+                        float velocity, double bpm, uint64_t sampleRate) {
+            return commandQueue.push(Command(CommandType::AddArpeggio,
+                ArpeggioData{trackId, notes, startBeat, noteLength, repetitions,
+                           velocity, bpm, sampleRate}));
+        }
+
+        bool rebuildTimeline() {
+            return commandQueue.push(Command(CommandType::RebuildTimeline));
+        }
+
+        // ============================================================
+        // Real-time Note Triggers (for keyboard/MIDI input)
+        // ============================================================
+
+        bool noteOn(Instrument* instrument, int midiNote, float velocity) {
+            return commandQueue.push(Command(CommandType::NoteOn,
+                NoteData{midiNote, velocity, instrument}));
+        }
+
+        bool noteOff(Instrument* instrument, int midiNote) {
+            return commandQueue.push(Command(CommandType::NoteOff,
+                NoteData{midiNote, 0.0f, instrument}));
+        }
+
+    private:
+        CommandQueue& commandQueue;
+    };
+}
+
+#endif //DAWCOREENGINE_COMMANDBUILDER_H
+

@@ -7,17 +7,39 @@
 
 #include <variant>
 #include <cstdint>
+#include <string>
+#include <vector>
 #include "../render_loop/audio/Instrument.h"
 
 namespace coreengine {
 
     enum class CommandType {
+        // Real-time commands
         NoteOn,
         NoteOff,
         AllNotesOff,
-        AddInstrument, // consider instrument to be either an oscillator or anything created with a plugin vst2
         Play,
         Stop,
+        Pause,
+        Reset,
+        Seek,
+
+        // Timeline editing commands
+        AddTrack,
+        RemoveTrack,
+        AddNote,
+        RemoveNote,
+        AddChord,
+        AddMelody,
+        AddArpeggio,
+        ClearTrack,
+        SetTrackVolume,
+        SetTrackMute,
+        SetTrackSolo,
+        RebuildTimeline,
+
+        // Legacy
+        AddInstrument,
         SetTimestamp,
     };
     struct NoteData { int midiNote; float velocity; Instrument *synth; };
@@ -25,12 +47,86 @@ namespace coreengine {
     struct TimestampData { uint64_t samples; };
     struct ParamData { int pluginId; int paramId; float value; };
 
+    // Timeline command data structures
+    struct AddTrackData {
+        int trackId;
+        std::string trackName;
+        int synthType; // 0=Sine, 1=Square, 2=Sawtooth, 3=PWM
+        int numVoices;
+    };
+
+    struct TrackControlData {
+        int trackId;
+        float value; // Used for volume, mute (0/1), solo (0/1)
+    };
+
+    struct NoteEventData {
+        int trackId;
+        uint64_t startSample;
+        uint64_t durationSamples;
+        int midiNote;
+        float velocity;
+    };
+
+    struct NoteEventMusicalData {
+        int trackId;
+        double startBeat;
+        double durationBeats;
+        int midiNote;
+        float velocity;
+        double bpm;
+        uint64_t sampleRate;
+    };
+
+    struct ChordData {
+        int trackId;
+        std::vector<int> notes;
+        double startBeat;
+        double durationBeats;
+        float velocity;
+        double bpm;
+        uint64_t sampleRate;
+    };
+
+    struct MelodyData {
+        int trackId;
+        std::vector<int> midiNotes;
+        std::vector<double> startBeats;
+        std::vector<double> durationBeats;
+        std::vector<float> velocities;
+        double bpm;
+        uint64_t sampleRate;
+    };
+
+    struct ArpeggioData {
+        int trackId;
+        std::vector<int> notes;
+        double startBeat;
+        double noteLength;
+        int repetitions;
+        float velocity;
+        double bpm;
+        uint64_t sampleRate;
+    };
+
+    struct SeekData {
+        uint64_t samplePosition;
+    };
+
     using CommandData = std::variant<
-        std::monostate,   // Empty/None
-        NoteData,         // NoteOn, NoteOff
-        InstrumentData,   // AddInstrument
-        TimestampData,    // SetTimestamp
-        ParamData         // Volume, Pan, VST Params
+        std::monostate,       // Empty/None
+        NoteData,             // NoteOn, NoteOff
+        InstrumentData,       // AddInstrument
+        TimestampData,        // SetTimestamp
+        ParamData,            // Volume, Pan, VST Params
+        AddTrackData,         // AddTrack
+        TrackControlData,     // SetTrackVolume, SetTrackMute, SetTrackSolo, RemoveTrack
+        NoteEventData,        // AddNote (sample-based)
+        NoteEventMusicalData, // AddNote (beat-based)
+        ChordData,            // AddChord
+        MelodyData,           // AddMelody
+        ArpeggioData,         // AddArpeggio
+        SeekData              // Seek
     >;
 
     struct Command {

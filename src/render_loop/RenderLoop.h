@@ -11,6 +11,7 @@
 #include "../configs/EngineConfig.h"
 #include "audio/AudioBlock.h"
 #include "audio/AudioBuffer.h"
+#include "audio/Timeline.h"
 
 namespace coreengine {
 
@@ -33,8 +34,18 @@ namespace coreengine {
         // Access to command queue for pushing commands from UI/main thread
         CommandQueue& getCommandQueue() { return commandQueue; }
 
+        // Access to timeline for scheduling events
+        Timeline& getTimeline() { return timeline; }
+
+        // Get current playback position in samples
+        uint64_t getCurrentPosition() const { return positionClock; }
+
+        // Get sample rate for time conversions
+        uint64_t getSampleRate() const { return audioBuffer->sampleRate; }
+
     private:
         CommandQueue commandQueue;
+        Timeline timeline;
         const uint32_t numSamples = 512; // TODO: needs to stop be static
         std::shared_ptr<coreengine::AudioBuffer> audioBuffer;
         uint64_t positionClock; // Global timeline position

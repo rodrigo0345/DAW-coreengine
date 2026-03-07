@@ -5,6 +5,8 @@
 #include "RenderLoop.h"
 
 #include "../commands/Command.h"
+#include "audio/SynthFactory.h"
+#include "audio/Sequencer.h"
 
 coreengine::RenderLoop::RenderLoop(const coreengine::EngineConfig& config)
         : positionClock(0), isPlaying(false) {
@@ -28,6 +30,7 @@ coreengine::RenderLoop::RenderLoop(const coreengine::EngineConfig& config)
 void coreengine::RenderLoop::processCommands() {
     while (const auto cmd = commandQueue.pop()) {
         switch (cmd->type) {
+            // Real-time playback commands
             case CommandType::NoteOn: {
                 const auto data = std::get<NoteData>(cmd->data);
                 if (data.synth) {
@@ -43,18 +46,16 @@ void coreengine::RenderLoop::processCommands() {
                 break;
             }
             case CommandType::AllNotesOff: {
-                // Turn off all notes on all instruments
                 for (const auto& processor : processorBlocks) {
                     if (auto* instrument = dynamic_cast<Instrument*>(processor.get())) {
                         instrument->allNotesOff();
                     }
                 }
-                break;
-            }
-            case CommandType::AddInstrument: {
-                auto data = std::get<InstrumentData>(cmd->data);
-                // Logic to instantiate a new AudioBlock and add to DAG
-                // This would require a plugin registry/factory system
+                for (auto& track : timeline.getAllTracks()) {
+                    if (track->getInstrument()) {
+                        track->getInstrument()->allNotesOff();
+                    }
+                }
                 break;
             }
             case CommandType::Play: {
@@ -63,6 +64,120 @@ void coreengine::RenderLoop::processCommands() {
             }
             case CommandType::Stop: {
                 this->stop();
+                break;
+            }
+            case CommandType::Pause: {
+                this->pause();
+                break;
+            }
+            case CommandType::Reset: {
+                this->reset();
+                break;
+            }
+            case CommandType::Seek: {
+                auto data = std::get<SeekData>(cmd->data);
+                this->gotoPosition(data.samplePosition);
+                break;
+            }
+
+            // Timeline editing commands
+            case CommandType::AddTrack: {
+                auto data = std::get<AddTrackData>(cmd->data);
+                std::unique_ptr<Instrument> instrument;
+
+                // Create instrument based on synthType
+                switch (data.synthType) {
+                    case 0: instrument = SynthFactory::createSineSynth(data.numVoices); break;
+                    case 1: instrument = SynthFactory::createSquareSynth(data.numVoices); break;
+                    case 2: instrument = SynthFactory::createSawtoothSynth(data.numVoices); break;
+                    case 3: instrument = SynthFactory::createPWMSynth(data.numVoices); break;
+                    default: instrument = SynthFactory::createSineSynth(data.numVoices); break;
+                }
+
+                timeline.addTrack(data.trackName, std::move(instrument));
+                break;
+            }
+            case CommandType::RemoveTrack: {
+                auto data = std::get<TrackControlData>(cmd->data);
+                // TODO: Implement track removal in Timeline class
+                break;
+            }
+            case CommandType::AddNote: {
+                if (std::holds_alternative<NoteEventData>(cmd->data)) {
+                    auto data = std::get<NoteEventData>(cmd->data);
+                    timeline.addNote(data.trackId, data.startSample, data.durationSamples,
+                                   data.midiNote, data.velocity);
+                } else if (std::holds_alternative<NoteEventMusicalData>(cmd->data)) {
+                    auto data = std::get<NoteEventMusicalData>(cmd->data);
+                    timeline.addNoteMusical(data.trackId, data.startBeat, data.durationBeats,
+                                          data.midiNote, data.velocity, data.bpm, data.sampleRate);
+                }
+                break;
+            }
+            case CommandType::AddChord: {
+                auto data = std::get<ChordData>(cmd->data);
+                Sequencer::addChord(timeline, data.trackId, data.notes, data.startBeat,
+                                  data.durationBeats, data.velocity, data.bpm, data.sampleRate);
+                break;
+            }
+            case CommandType::AddMelody: {
+                auto data = std::get<MelodyData>(cmd->data);
+                std::vector<Note> notes;
+                for (size_t i = 0; i < data.midiNotes.size(); ++i) {
+                    notes.emplace_back(data.midiNotes[i], data.startBeats[i],
+                                     data.durationBeats[i], data.velocities[i]);
+                }
+                Sequencer::addMelody(timeline, data.trackId, notes, data.bpm, data.sampleRate);
+                break;
+            }
+            case CommandType::AddArpeggio: {
+                auto data = std::get<ArpeggioData>(cmd->data);
+                Sequencer::addArpeggio(timeline, data.trackId, data.notes, data.startBeat,
+                                     data.noteLength, data.repetitions, data.velocity,
+                                     data.bpm, data.sampleRate);
+                break;
+            }
+            case CommandType::ClearTrack: {
+                auto data = std::get<TrackControlData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (track) {
+                    track->clearEvents();
+                }
+                break;
+            }
+            case CommandType::SetTrackVolume: {
+                auto data = std::get<TrackControlData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (track) {
+                    track->setVolume(data.value);
+                }
+                break;
+            }
+            case CommandType::SetTrackMute: {
+                auto data = std::get<TrackControlData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (track) {
+                    track->setMuted(data.value > 0.5f);
+                }
+                break;
+            }
+            case CommandType::SetTrackSolo: {
+                auto data = std::get<TrackControlData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (track) {
+                    track->setSolo(data.value > 0.5f);
+                }
+                break;
+            }
+            case CommandType::RebuildTimeline: {
+                timeline.rebuildEventQueue();
+                break;
+            }
+
+            // Legacy commands
+            case CommandType::AddInstrument: {
+                auto data = std::get<InstrumentData>(cmd->data);
+                // Logic to instantiate a new AudioBlock and add to DAG
                 break;
             }
             case CommandType::SetTimestamp: {
@@ -90,13 +205,15 @@ void coreengine::RenderLoop::stop() {
 
 void coreengine::RenderLoop::reset() {
     this->positionClock = 0;
-        for (const auto& channelPtr : audioBuffer->channels) {
-            std::fill_n(channelPtr, audioBuffer->numSamples, 0.0f);
-        }
+    timeline.reset();
+    for (const auto& channelPtr : audioBuffer->channels) {
+        std::fill_n(channelPtr, audioBuffer->numSamples, 0.0f);
+    }
 }
 
 void coreengine::RenderLoop::gotoPosition(uint64_t positionClock) {
     this->positionClock = positionClock;
+    timeline.seekTo(positionClock);
 }
 
 void coreengine::RenderLoop::addProcessor(std::unique_ptr<AudioBlock> block) {
@@ -114,10 +231,19 @@ void coreengine::RenderLoop::processNextBlock() {
 
     if (!isPlaying) return;
 
-    // Process all audio blocks
+    // Process timeline events for this block
+    timeline.processEventsForBlock(positionClock, audioBuffer->numSamples);
+
+    // Process all tracks from timeline
+    for (auto& track : timeline.getAllTracks()) {
+        track->processBlock(audioBuffer);
+    }
+
+    // Process any additional audio blocks (effects, etc.)
     for (const auto& processor : processorBlocks) {
         processor->processBlock(audioBuffer);
     }
+
     this->positionClock += audioBuffer->numSamples;
 }
 

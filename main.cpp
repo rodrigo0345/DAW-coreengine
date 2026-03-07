@@ -1,166 +1,124 @@
 #include <iostream>
-#include <termios.h>
-#include <unistd.h>
 #include <thread>
 #include <chrono>
 #include "src/CoreServiceEngine.h"
-#include "src/render_loop/audio/SynthFactory.h"
-#include "src/input/KeyboardHandler.h"
-
-// Helper to set terminal to non-canonical mode for instant key response
-struct TerminalMode {
-    termios oldSettings;
-
-    TerminalMode() {
-        termios newSettings;
-        tcgetattr(STDIN_FILENO, &oldSettings);
-        newSettings = oldSettings;
-        newSettings.c_lflag &= ~(ICANON | ECHO); // Disable line buffering and echo
-        tcsetattr(STDIN_FILENO, TCSANOW, &newSettings);
-    }
-
-    ~TerminalMode() {
-        tcsetattr(STDIN_FILENO, TCSANOW, &oldSettings);
-    }
-};
-
-void printHelp() {
-    std::cout << "\n=== DAW Core Engine - Keyboard Synth ===\n";
-    std::cout << "Controls:\n";
-    std::cout << "  Piano keys: Z X C V B N M , (lower row)\n";
-    std::cout << "              Q W E R T Y U I (upper row)\n";
-    std::cout << "  Black keys: S D G H J (between white keys)\n";
-    std::cout << "              2 3 5 6 7 (upper row)\n";
-    std::cout << "\n";
-    std::cout << "  1: Switch to Sine Wave\n";
-    std::cout << "  2: Switch to Square Wave\n";
-    std::cout << "  3: Switch to Sawtooth Wave\n";
-    std::cout << "  4: Switch to PWM Wave\n";
-    std::cout << "\n";
-    std::cout << "  +: Octave Up\n";
-    std::cout << "  -: Octave Down\n";
-    std::cout << "  p: Play/Pause\n";
-    std::cout << "  ESC or Ctrl+C: Quit\n";
-    std::cout << "========================================\n\n";
-}
+#include "src/commands/CommandBuilder.h"
 
 int main() {
+    std::cout << "=== DAW Timeline Demo (Command-Based) ===\n\n";
+
     coreengine::EngineConfig config{};
     config.sampleRate = coreengine::SampleRate::CD;
     config.dspFormat = coreengine::DspFormat::FLOAT32;
     config.channels = coreengine::Channels::MONO;
 
-    // Create multiple synths for experimentation
-    auto sineSynth = coreengine::SynthFactory::createSineSynth(8);
-    auto squareSynth = coreengine::SynthFactory::createSquareSynth(8);
-    auto sawSynth = coreengine::SynthFactory::createSawtoothSynth(8);
-    auto pwmSynth = coreengine::SynthFactory::createPWMSynth(8);
-
-    // Keep raw pointers for command routing (ownership transferred to engine)
-    auto* activeSynth = sineSynth.get();
-    auto* sinePtr = sineSynth.get();
-    auto* squarePtr = squareSynth.get();
-    auto* sawPtr = sawSynth.get();
-    auto* pwmPtr = pwmSynth.get();
-
     coreengine::CoreServiceEngine engine(config);
+    coreengine::CommandBuilder cmd(engine.getRenderLoop().getCommandQueue());
 
-    // Add all synths to the engine
-    engine.getRenderLoop().addProcessor(std::move(sineSynth));
-    engine.getRenderLoop().addProcessor(std::move(squareSynth));
-    engine.getRenderLoop().addProcessor(std::move(sawSynth));
-    engine.getRenderLoop().addProcessor(std::move(pwmSynth));
+    constexpr double BPM = 120.0;
+    constexpr uint64_t SAMPLE_RATE = 44100;
 
-    // Create keyboard handler
-    coreengine::KeyboardHandler keyboard(engine.getRenderLoop().getCommandQueue());
-    keyboard.setActiveInstrument(activeSynth);
+    std::cout << "Creating bass track...\n";
+    cmd.addSawtoothTrack(0, "Bass", 1);
 
-    // Start audio engine
-    engine.getRenderLoop().play();
-    engine.start();
+    // Add bass notes using commands
+    const std::vector<int> bassNotes = {36, 36, 43, 41, 38, 38, 36};
+    const std::vector<double> bassStarts = {0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0};
+    const std::vector<double> bassDurations = {0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1.0};
+    const std::vector<float> bassVelocities = {100.0f, 80.0f, 100.0f, 90.0f, 100.0f, 80.0f, 100.0f};
 
-    printHelp();
-    std::cout << "Current synth: SINE WAVE | Octave: 0\n";
-
-    // Set terminal to raw mode
-    TerminalMode termMode;
-
-    bool running = true;
-    char currentSynthType = '1';
-
-    while (running) {
-        char ch;
-        if (read(STDIN_FILENO, &ch, 1) > 0) {
-            // Handle synth switching
-            if (ch >= '1' && ch <= '4') {
-                // Release all notes on previous synth
-                if (activeSynth) {
-                    activeSynth->allNotesOff();
-                }
-
-                currentSynthType = ch;
-                switch (ch) {
-                    case '1':
-                        activeSynth = sinePtr;
-                        std::cout << "\rCurrent synth: SINE WAVE     | Octave: " << (keyboard.getOctaveOffset()/12) << "  \n";
-                        break;
-                    case '2':
-                        activeSynth = squarePtr;
-                        std::cout << "\rCurrent synth: SQUARE WAVE   | Octave: " << (keyboard.getOctaveOffset()/12) << "  \n";
-                        break;
-                    case '3':
-                        activeSynth = sawPtr;
-                        std::cout << "\rCurrent synth: SAWTOOTH WAVE | Octave: " << (keyboard.getOctaveOffset()/12) << "  \n";
-                        break;
-                    case '4':
-                        activeSynth = pwmPtr;
-                        std::cout << "\rCurrent synth: PWM WAVE      | Octave: " << (keyboard.getOctaveOffset()/12) << "  \n";
-                        break;
-                }
-                keyboard.setActiveInstrument(activeSynth);
-                continue;
-            }
-
-            // Handle octave change
-            if (ch == '+' || ch == '=') {
-                keyboard.changeOctave(1);
-                std::cout << "\rOctave: " << (keyboard.getOctaveOffset()/12) << "  \n";
-                continue;
-            }
-            if (ch == '-' || ch == '_') {
-                keyboard.changeOctave(-1);
-                std::cout << "\rOctave: " << (keyboard.getOctaveOffset()/12) << "  \n";
-                continue;
-            }
-
-            // Handle play/pause
-            if (ch == 'p' || ch == 'P') {
-                auto& cmdQueue = engine.getRenderLoop().getCommandQueue();
-                cmdQueue.push(coreengine::Command(coreengine::CommandType::Play));
-                std::cout << "\rPlaying...\n";
-                continue;
-            }
-
-            // Handle quit
-            if (ch == 27) { // ESC key
-                running = false;
-                break;
-            }
-
-            // Try to trigger note
-            if (keyboard.onKeyPress(ch)) {
-                std::cout << "." << std::flush; // Visual feedback
-            }
+    // Repeat the bass pattern 4 times
+    for (int rep = 0; rep < 4; ++rep) {
+        double offset = rep * 4.0;
+        for (size_t i = 0; i < bassNotes.size(); ++i) {
+            cmd.addNoteMusical(0, bassStarts[i] + offset, bassDurations[i],
+                             bassNotes[i], bassVelocities[i], BPM, SAMPLE_RATE);
         }
-
-        // Small sleep to reduce CPU usage
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    // Cleanup
-    std::cout << "\n\nShutting down...\n";
-    engine.stop();
+    // ============================================================
+    // Track 2: Chord progression (Square wave) - Using Commands
+    // ============================================================
+    std::cout << "Creating chord track...\n";
+    cmd.addSquareTrack(1, "Chords", 8);
 
+    // C major chord
+    cmd.addChord(1, {60, 64, 67}, 0.0, 4.0, 80.0f, BPM, SAMPLE_RATE);
+
+    // F major chord
+    cmd.addChord(1, {65, 69, 72}, 4.0, 4.0, 80.0f, BPM, SAMPLE_RATE);
+
+    // G major chord
+    cmd.addChord(1, {67, 71, 74}, 8.0, 4.0, 80.0f, BPM, SAMPLE_RATE);
+
+    // C major chord (resolution)
+    cmd.addChord(1, {60, 64, 67}, 12.0, 4.0, 80.0f, BPM, SAMPLE_RATE);
+
+    // ============================================================
+    // Track 3: Lead melody (Sine wave) - Using Commands
+    // ============================================================
+    std::cout << "Creating lead track...\n";
+    cmd.addSineTrack(2, "Lead", 4);
+
+    cmd.addMelody(2,
+        {72, 74, 76, 77, 79, 77, 76},        // MIDI notes
+        {0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 3.5}, // Start beats
+        {0.5, 0.5, 0.5, 0.5, 1.0, 0.5, 0.5}, // Durations
+        {100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f, 100.0f}, // Velocities
+        BPM, SAMPLE_RATE);
+
+    // ============================================================
+    // Track 4: Arpeggio (PWM) - Using Commands
+    // ============================================================
+    std::cout << "Creating arpeggio track...\n";
+    cmd.addPWMTrack(3, "Arpeggio", 4);
+
+    cmd.addArpeggio(3, {60, 64, 67, 72}, 8.0, 0.25, 8, 90.0f, BPM, SAMPLE_RATE);
+
+    // Rebuild the timeline after adding all events
+    cmd.rebuildTimeline();
+
+    // Start playback using commands
+    std::cout << "Starting playback...\n";
+    cmd.play();
+    engine.start();
+
+    std::cout << "Playing timeline...\n";
+    std::cout << "Total duration: " << (engine.getRenderLoop().getTimeline().getTotalDuration() / (double)SAMPLE_RATE) << " seconds\n";
+    std::cout << "Press Ctrl+C to stop\n\n";
+
+    std::cout << "Controls:\n";
+    std::cout << "  This demo runs automatically, but you could add:\n";
+    std::cout << "  - Mute/solo tracks with cmd.setTrackMute(trackId, true)\n";
+    std::cout << "  - Change volume with cmd.setTrackVolume(trackId, 0.5f)\n";
+    std::cout << "  - Seek with cmd.seek(samplePosition)\n";
+    std::cout << "  - Stop with cmd.stop()\n\n";
+
+    // Show playback progress
+    auto startTime = std::chrono::steady_clock::now();
+
+    while (true) {
+        auto currentTime = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() / 1000.0;
+
+        uint64_t currentPos = engine.getRenderLoop().getCurrentPosition();
+        double currentSeconds = currentPos / (double)SAMPLE_RATE;
+
+        std::cout << "\rPlayback: " << currentSeconds << "s / "
+                  << (engine.getRenderLoop().getTimeline().getTotalDuration() / (double)SAMPLE_RATE) << "s    " << std::flush;
+
+        // Loop back to beginning when done
+        if (currentPos >= engine.getRenderLoop().getTimeline().getTotalDuration()) {
+            cmd.reset();
+            startTime = std::chrono::steady_clock::now();
+            std::cout << "\n[Looping...]\n";
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    cmd.stop();
+    engine.stop();
     return 0;
 }
 
