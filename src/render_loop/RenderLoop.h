@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 
+#include "../commands/CommandQueue.h"
 #include "../configs/EngineConfig.h"
 #include "audio/AudioBlock.h"
 #include "audio/AudioBuffer.h"
@@ -16,6 +17,8 @@ namespace coreengine {
     class RenderLoop {
     public:
         RenderLoop(const coreengine::EngineConfig& config);
+
+        void processCommands();
         void play();
         void pause();
         void stop();
@@ -27,7 +30,11 @@ namespace coreengine {
         std::shared_ptr<coreengine::AudioBuffer> getBuffer() const { return audioBuffer; }
         void processNextBlock();
 
+        // Access to command queue for pushing commands from UI/main thread
+        CommandQueue& getCommandQueue() { return commandQueue; }
+
     private:
+        CommandQueue commandQueue;
         const uint32_t numSamples = 512; // TODO: needs to stop be static
         std::shared_ptr<coreengine::AudioBuffer> audioBuffer;
         uint64_t positionClock; // Global timeline position

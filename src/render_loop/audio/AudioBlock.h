@@ -5,6 +5,7 @@
 #ifndef DAWCOREENGINE_AUDIOBLOCK_H
 #define DAWCOREENGINE_AUDIOBLOCK_H
 
+#include <memory>
 #include "AudioBuffer.h"
 
 
