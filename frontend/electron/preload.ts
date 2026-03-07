@@ -1,0 +1,42 @@
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Expose protected methods to the renderer process
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Engine lifecycle
+  startEngine: () => ipcRenderer.invoke('engine:start'),
+  stopEngine: () => ipcRenderer.invoke('engine:stop'),
+
+  // Timeline / track management
+  addTrack: (data: any) => ipcRenderer.invoke('timeline:addTrack', data),
+  addNote: (data: any) => ipcRenderer.invoke('timeline:addNote', data),
+  rebuildTimeline: () => ipcRenderer.invoke('timeline:rebuild'),
+  clearTrack: (data: any) => ipcRenderer.invoke('timeline:clearTrack', data),
+
+  // Track controls
+  setTrackVolume: (data: any) => ipcRenderer.invoke('track:setVolume', data),
+  setTrackMute: (data: any) => ipcRenderer.invoke('track:setMute', data),
+  setTrackSolo: (data: any) => ipcRenderer.invoke('track:setSolo', data),
+
+  // ADSR envelope
+  setADSR: (data: any) => ipcRenderer.invoke('track:setADSR', data),
+
+  // Playback
+  play: () => ipcRenderer.invoke('playback:play'),
+  stop: () => ipcRenderer.invoke('playback:stop'),
+  pause: () => ipcRenderer.invoke('playback:pause'),
+  seek: (samplePosition: number) => ipcRenderer.invoke('playback:seek', samplePosition),
+
+  // Generic command (for future use)
+  sendCommand: (cmd: string) => ipcRenderer.invoke('send-command', cmd),
+
+  // Engine event listeners
+  onEngineOutput: (cb: (data: string) => void) => {
+    ipcRenderer.on('engine-output', (_e, data) => cb(data));
+  },
+  onEngineError: (cb: (data: string) => void) => {
+    ipcRenderer.on('engine-error', (_e, data) => cb(data));
+  },
+  onEngineClosed: (cb: (code: number) => void) => {
+    ipcRenderer.on('engine-closed', (_e, code) => cb(code));
+  },
+});

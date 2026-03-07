@@ -1,0 +1,253 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Piano Roll – FL Studio-inspired dark theme
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pr {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-darker);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.pr-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.pr-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+.pr-title { font-weight: 600; font-size: 0.8rem; }
+.pr-badge {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.5rem;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+}
+.pr-snap {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.pr-snap select {
+  background: var(--bg-darker);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.7rem;
+}
+
+/* ── Ruler row ───────────────────────────────────────────────────────────── */
+.pr-ruler-row {
+  display: flex;
+  height: 28px;
+  flex-shrink: 0;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+}
+.pr-ruler-pad {
+  width: 56px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border-color);
+}
+.pr-ruler-scroll {
+  flex: 1;
+  overflow: hidden;       /* JS syncs scrollLeft from content */
+}
+.pr-ruler {
+  position: relative;
+  height: 100%;
+  cursor: pointer;
+}
+.pr-ruler-mark {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-left: 1px solid rgba(255,255,255,.06);
+  display: flex;
+  align-items: flex-end;
+  padding: 0 0 2px 4px;
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+.pr-ruler-mark.bar {
+  border-left: 1px solid rgba(255,255,255,.15);
+}
+.pr-ruler-mark.bar span { color: var(--text-primary); font-weight: 600; }
+.pr-cursor-ruler {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* ── Body (keys + grid) ──────────────────────────────────────────────────── */
+.pr-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Piano keys */
+.pr-keys {
+  width: 56px;
+  flex-shrink: 0;
+  overflow: hidden;        /* synced via JS from pr-content scrollTop */
+  border-right: 1px solid var(--border-color);
+}
+.pr-key {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 6px;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  font-size: 0.6rem;
+  font-weight: 600;
+}
+.pr-key.white { background: #e4e4e4; color: #333; }
+.pr-key.black { background: #3a3a3a; color: #888; }
+.pr-key.oct   { border-bottom: 1px solid var(--accent); }
+.pr-key-label { pointer-events: none; }
+
+/* Grid scroll container */
+.pr-content {
+  flex: 1;
+  overflow: auto;
+  background: #191919;
+}
+
+/* Grid canvas */
+.pr-grid {
+  position: relative;
+  cursor: crosshair;
+}
+
+/* Row stripes */
+.pr-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-bottom: 1px solid rgba(255,255,255,.025);
+  pointer-events: none;
+}
+.pr-row.dark  { background: rgba(0,0,0,.18); }
+.pr-row.oct-line { border-bottom: 1px solid rgba(100,180,255,.12); }
+
+/* Vertical grid lines */
+.pr-vline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255,255,255,.04);
+  pointer-events: none;
+}
+.pr-vline.bar { background: rgba(255,255,255,.10); }
+
+/* Playback cursor */
+.pr-cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+  pointer-events: none;
+  z-index: 80;
+}
+
+/* ── Notes ────────────────────────────────────────────────────────────────── */
+.pr-note {
+  position: absolute;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  color: #fff;
+  font-size: 0.55rem;
+  font-weight: 600;
+  cursor: grab;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.15), 0 1px 3px rgba(0,0,0,.35);
+  overflow: hidden;
+  z-index: 10;
+  transition: box-shadow .1s;
+}
+.pr-note:hover {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 2px 8px rgba(0,0,0,.45);
+}
+.pr-note.sel {
+  outline: 1.5px solid #fff;
+  outline-offset: -1px;
+  z-index: 20;
+}
+
+.pr-note-label {
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0,0,0,.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pr-note-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  background: rgba(255,255,255,.1);
+  opacity: 0;
+  transition: opacity .15s;
+}
+.pr-note:hover .pr-note-handle { opacity: 1; }
+.pr-note-handle:hover { background: rgba(255,255,255,.35); }
+
+/* ── Status bar ──────────────────────────────────────────────────────────── */
+.pr-status {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────────────── */
+.pr-content::-webkit-scrollbar { width: 8px; height: 8px; }
+.pr-content::-webkit-scrollbar-track { background: #111; }
+.pr-content::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+.pr-content::-webkit-scrollbar-thumb:hover { background: #444; }
+.pr-content::-webkit-scrollbar-corner { background: #111; }
+
+/* ── Selection Box ───────────────────────────────────────────────────────── */
+.pr-select-box {
+  position: absolute;
+  border: 1px solid var(--accent);
+  background: rgba(var(--accent-rgb), 0.2);
+  pointer-events: none;
+  z-index: 100;
+}

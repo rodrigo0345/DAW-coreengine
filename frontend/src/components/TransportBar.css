@@ -1,0 +1,106 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Transport Bar
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.transport-bar {
+  display: flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
+  gap: 1.5rem;
+  flex-shrink: 0;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.transport-controls { display: flex; gap: 0.35rem; }
+
+.transport-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.transport-btn:hover:not(:disabled) { background: #3a3a3a; }
+.transport-btn:active:not(:disabled) { transform: scale(.93); }
+.transport-btn.play  { background: var(--accent); color: #fff; }
+.transport-btn.play:hover:not(:disabled) { background: var(--accent-hover); }
+.transport-btn.pause { background: var(--warning); color: #fff; }
+.transport-btn.pause:hover:not(:disabled) { background: #e68900; }
+
+/* ── Info fields ──────────────────────────────────────────────────────────── */
+.transport-info {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex: 1;
+}
+
+.transport-field {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.transport-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.transport-value {
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  background: var(--bg-darker);
+  padding: 0.2rem 0.5rem;
+  border-radius: 3px;
+  min-width: 70px;
+  text-align: center;
+}
+
+/* BPM */
+.bpm-input {
+  width: 52px;
+  padding: 0.25rem 0.35rem;
+  background: var(--bg-darker);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  text-align: center;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+}
+.bpm-input:focus { border-color: var(--accent); }
+
+.bpm-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.bpm-btns button {
+  width: 18px;
+  height: 14px;
+  padding: 0;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-size: 0.65rem;
+  font-weight: bold;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bpm-btns button:hover { background: #3a3a3a; }
+
+.transport-warn {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--warning);
+  font-weight: 500;
+}

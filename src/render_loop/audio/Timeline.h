@@ -22,12 +22,27 @@ namespace coreengine {
     public:
         Timeline() = default;
 
-        // Track management
+        // Track management — auto-assign ID
         int addTrack(std::string name, std::unique_ptr<Instrument> instrument) {
             int trackId = nextTrackId++;
             tracks.emplace_back(std::make_unique<Track>(trackId, std::move(name), std::move(instrument)));
             rebuildEventQueue();
             return trackId;
+        }
+
+        // Track management — caller-specified ID (used by the frontend)
+        void addTrackWithId(int trackId, std::string name, std::unique_ptr<Instrument> instrument) {
+            // If a track with this ID already exists, replace its instrument
+            for (auto& t : tracks) {
+                if (t->getTrackId() == trackId) {
+                    t->replaceInstrument(std::move(instrument));
+                    rebuildEventQueue();
+                    return;
+                }
+            }
+            tracks.emplace_back(std::make_unique<Track>(trackId, std::move(name), std::move(instrument)));
+            if (trackId >= nextTrackId) nextTrackId = trackId + 1;
+            rebuildEventQueue();
         }
 
         Track* getTrack(int trackId) {

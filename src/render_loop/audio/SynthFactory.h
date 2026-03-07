@@ -7,6 +7,7 @@
 
 #include <memory>
 #include "Instrument.h"
+#include "ADSR.h"
 #include "simple_sounds/SimpleSynth.h"
 #include "simple_sounds/SineOscillator.h"
 #include "simple_sounds/SquareOscillator.h"
@@ -15,7 +16,7 @@
 namespace coreengine {
     /**
      * Factory class for creating pre-configured synthesizers.
-     * Provides convenient methods to create common synth types.
+     * Every factory method accepts sampleRate so ADSR timing is correct.
      */
     class SynthFactory {
     public:
@@ -24,12 +25,11 @@ namespace coreengine {
          * @param numVoices Number of polyphonic voices (default: 8)
          * @return A unique pointer to the synth
          */
-        static std::unique_ptr<Instrument> createSineSynth(int numVoices = 8) {
+        static std::unique_ptr<Instrument> createSineSynth(int numVoices = 8, double sampleRate = 44100.0) {
             return std::make_unique<SimpleSynth>(
                 numVoices,
-                []() -> std::unique_ptr<Oscillator> {
-                    return std::make_unique<SineOscillator>();
-                }
+                []() -> std::unique_ptr<Oscillator> { return std::make_unique<SineOscillator>(); },
+                sampleRate
             );
         }
 
@@ -39,12 +39,11 @@ namespace coreengine {
          * @param pulseWidth Pulse width ratio 0.0-1.0 (default: 0.5 for perfect square)
          * @return A unique pointer to the synth
          */
-        static std::unique_ptr<Instrument> createSquareSynth(int numVoices = 8, float pulseWidth = 0.5f) {
+        static std::unique_ptr<Instrument> createSquareSynth(int numVoices = 8, double sampleRate = 44100.0, float pulseWidth = 0.5f) {
             return std::make_unique<SimpleSynth>(
                 numVoices,
-                [pulseWidth]() -> std::unique_ptr<Oscillator> {
-                    return std::make_unique<SquareOscillator>(pulseWidth);
-                }
+                [pulseWidth]() -> std::unique_ptr<Oscillator> { return std::make_unique<SquareOscillator>(pulseWidth); },
+                sampleRate
             );
         }
 
@@ -53,12 +52,11 @@ namespace coreengine {
          * @param numVoices Number of polyphonic voices (default: 8)
          * @return A unique pointer to the synth
          */
-        static std::unique_ptr<Instrument> createSawtoothSynth(int numVoices = 8) {
+        static std::unique_ptr<Instrument> createSawtoothSynth(int numVoices = 8, double sampleRate = 44100.0) {
             return std::make_unique<SimpleSynth>(
                 numVoices,
-                []() -> std::unique_ptr<Oscillator> {
-                    return std::make_unique<SawtoothOscillator>();
-                }
+                []() -> std::unique_ptr<Oscillator> { return std::make_unique<SawtoothOscillator>(); },
+                sampleRate
             );
         }
 
@@ -68,13 +66,22 @@ namespace coreengine {
          * @param numVoices Number of polyphonic voices (default: 8)
          * @return A unique pointer to the synth
          */
-        static std::unique_ptr<Instrument> createPWMSynth(int numVoices = 8) {
+        static std::unique_ptr<Instrument> createPWMSynth(int numVoices = 8, double sampleRate = 44100.0) {
             return std::make_unique<SimpleSynth>(
                 numVoices,
-                []() -> std::unique_ptr<Oscillator> {
-                    return std::make_unique<SquareOscillator>(0.1f); // 10% pulse width
-                }
+                []() -> std::unique_ptr<Oscillator> { return std::make_unique<SquareOscillator>(0.1f); },
+                sampleRate
             );
+        }
+
+        /** Create any synth type by index. 0=Sine, 1=Square, 2=Saw, 3=PWM */
+        static std::unique_ptr<Instrument> createByType(int synthType, int numVoices = 8, double sampleRate = 44100.0) {
+            switch (synthType) {
+                case 1:  return createSquareSynth(numVoices, sampleRate);
+                case 2:  return createSawtoothSynth(numVoices, sampleRate);
+                case 3:  return createPWMSynth(numVoices, sampleRate);
+                default: return createSineSynth(numVoices, sampleRate);
+            }
         }
     };
 }

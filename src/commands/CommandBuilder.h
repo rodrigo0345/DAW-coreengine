@@ -96,6 +96,11 @@ namespace coreengine {
                 TrackControlData{trackId, solo ? 1.0f : 0.0f}));
         }
 
+        bool setADSR(int trackId, float attack, float decay, float sustain, float release) {
+            return commandQueue.push(Command(CommandType::SetADSR,
+                ADSRData{trackId, attack, decay, sustain, release}));
+        }
+
         // ============================================================
         // Note/Event Commands
         // ============================================================

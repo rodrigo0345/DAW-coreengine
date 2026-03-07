@@ -1,0 +1,152 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Inspector / Channel Strip
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.inspector {
+  padding: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+.inspector-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  text-align: center;
+}
+.inspector-empty .hint { font-size: 0.75rem; opacity: 0.6; }
+
+/* ── Sections ─────────────────────────────────────────────────────────────── */
+.inspector-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.inspector-section h4 {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin: 0;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* ── Control row (label + input + value) ──────────────────────────────────── */
+.ctrl {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.ctrl label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.ctrl input[type="text"],
+.ctrl select {
+  padding: 0.35rem 0.4rem;
+  background: var(--bg-darker);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 0.75rem;
+}
+.ctrl input[type="text"]:focus,
+.ctrl select:focus {
+  border-color: var(--accent);
+}
+
+/* Range sliders */
+.ctrl input[type="range"] {
+  width: 100%;
+  height: 3px;
+  background: var(--bg-darker);
+  border-radius: 2px;
+  -webkit-appearance: none;
+  outline: none;
+}
+.ctrl input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.ctrl input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+.ctrl input[type="range"]:disabled::-webkit-slider-thumb {
+  background: #555;
+  cursor: not-allowed;
+}
+.ctrl input[type="range"]:disabled {
+  opacity: 0.4;
+}
+
+.ctrl-val {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-align: right;
+  font-family: 'Courier New', monospace;
+}
+.ctrl-val.dim { opacity: 0.4; }
+
+/* ── Toggle buttons (M / S) ───────────────────────────────────────────────── */
+.ctrl-row {
+  display: flex;
+  gap: 0.35rem;
+}
+.toggle-btn {
+  width: 28px;
+  height: 22px;
+  background: var(--bg-darker);
+  color: var(--text-secondary);
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.toggle-btn.on { background: var(--accent); color: #fff; }
+
+/* ── Info grid ────────────────────────────────────────────────────────────── */
+.info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+}
+.info-label { color: var(--text-secondary); }
+.info-val {
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+}
+
+/* ── Hints ────────────────────────────────────────────────────────────────── */
+.inspector .hint {
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  font-style: italic;
+}

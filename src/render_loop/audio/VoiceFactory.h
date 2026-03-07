@@ -9,6 +9,7 @@
 #include <functional>
 #include "Voice.h"
 #include "Oscillator.h"
+#include "ADSR.h"
 
 namespace coreengine {
     /**
@@ -20,12 +21,20 @@ namespace coreengine {
         using OscillatorCreator = std::function<std::unique_ptr<Oscillator>()>;
 
         /**
-         * Create a voice with a specific oscillator type
+         * Create a voice with a specific oscillator type and sample rate
          * @param createOscillator Function that creates an oscillator instance
+         * @param sampleRate Sample rate in Hz (default: 48000)
+         * @param adsrParams Optional ADSR parameters
          * @return A new Voice instance
          */
-        static std::unique_ptr<Voice> createVoice(OscillatorCreator createOscillator) {
-            return std::make_unique<Voice>(createOscillator());
+        static std::unique_ptr<Voice> createVoice(
+            const OscillatorCreator& createOscillator,
+            double sampleRate = 48000.0,
+            const ADSR::Parameters& adsrParams = ADSR::Parameters()
+        ) {
+            auto voice = std::make_unique<Voice>(createOscillator(), sampleRate);
+            voice->setADSRParameters(adsrParams);
+            return voice;
         }
     };
 }

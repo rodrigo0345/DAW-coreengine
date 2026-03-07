@@ -36,6 +36,7 @@ namespace coreengine {
         SetTrackVolume,
         SetTrackMute,
         SetTrackSolo,
+        SetADSR,
         RebuildTimeline,
 
         // Legacy
@@ -113,6 +114,14 @@ namespace coreengine {
         uint64_t samplePosition;
     };
 
+    struct ADSRData {
+        int trackId;
+        float attack;   // seconds
+        float decay;     // seconds
+        float sustain;   // 0.0–1.0
+        float release;   // seconds
+    };
+
     using CommandData = std::variant<
         std::monostate,       // Empty/None
         NoteData,             // NoteOn, NoteOff
@@ -126,7 +135,8 @@ namespace coreengine {
         ChordData,            // AddChord
         MelodyData,           // AddMelody
         ArpeggioData,         // AddArpeggio
-        SeekData              // Seek
+        SeekData,             // Seek
+        ADSRData              // SetADSR
     >;
 
     struct Command {

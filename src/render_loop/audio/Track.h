@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <algorithm>
 #include "Instrument.h"
 #include "TimelineEvent.h"
 
@@ -25,6 +26,16 @@ namespace coreengine {
         int getTrackId() const { return trackId; }
         const std::string& getName() const { return trackName; }
         Instrument* getInstrument() { return instrument.get(); }
+
+        /** Replace the instrument (e.g. when synth type changes). Keeps notes. */
+        void replaceInstrument(std::unique_ptr<Instrument> newInst) {
+            if (instrument) instrument->allNotesOff();
+            instrument = std::move(newInst);
+            // Re-point existing events at the new instrument
+            for (auto& ev : events) {
+                ev.instrument = instrument.get();
+            }
+        }
 
         void setMuted(bool muted) { isMuted = muted; }
         bool getMuted() const { return isMuted; }
@@ -47,18 +58,38 @@ namespace coreengine {
         // Clear all events
         void clearEvents() { events.clear(); }
 
-        // Process audio for this track
+        // Process audio for this track into the output buffer
         void processBlock(std::shared_ptr<AudioBuffer> buffer) {
-            if (!isMuted && instrument) {
-                instrument->processBlock(buffer);
+            if (!instrument || isMuted) return;
 
-                // Apply track volume
-                if (volume != 1.0f) {
-                    for (auto& channel : buffer->channels) {
-                        for (size_t i = 0; i < buffer->numSamples; ++i) {
-                            channel[i] *= volume;
-                        }
-                    }
+            const auto numSamples = buffer->numSamples;
+            const auto numChannels = buffer->channels.size();
+
+            // Ensure scratch buffers are large enough
+            if (scratchChannels_.size() != numChannels) {
+                scratchChannels_.resize(numChannels);
+            }
+            for (auto& ch : scratchChannels_) {
+                if (ch.size() < numSamples)
+                    ch.resize(numSamples, 0.0f);
+                std::fill_n(ch.data(), numSamples, 0.0f);
+            }
+
+            // Build a temporary AudioBuffer pointing at our scratch memory
+            auto tmpBuf = std::make_shared<AudioBuffer>();
+            tmpBuf->sampleRate = buffer->sampleRate;
+            tmpBuf->numSamples = numSamples;
+            tmpBuf->channels.resize(numChannels);
+            for (size_t c = 0; c < numChannels; ++c)
+                tmpBuf->channels[c] = scratchChannels_[c].data();
+
+            // Let the instrument render into the scratch buffer
+            instrument->processBlock(tmpBuf);
+
+            // Mix scratch into the real output, applying track volume
+            for (size_t c = 0; c < numChannels; ++c) {
+                for (size_t s = 0; s < numSamples; ++s) {
+                    buffer->channels[c][s] += scratchChannels_[c][s] * volume;
                 }
             }
         }
@@ -72,6 +103,9 @@ namespace coreengine {
         bool isMuted = false;
         bool isSolo = false;
         float volume = 1.0f;
+
+        // Per-track scratch buffers for safe mixing
+        std::vector<std::vector<float>> scratchChannels_;
     };
 }
 

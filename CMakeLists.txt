@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.1)
+cmake_minimum_required(VERSION 3.31.9)
 project(DAWCoreEngine)
 
 set(CMAKE_CXX_STANDARD 23)
@@ -7,7 +7,29 @@ set(CMAKE_CXX_STANDARD 23)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PULSE REQUIRED libpulse libpulse-simple)
 
-add_executable(DAWCoreEngine main.cpp
+add_executable(DAWCoreEngine main_interactive.cpp
+        src/CoreServiceEngine.cpp
+        src/CoreServiceEngine.h
+        src/configs/EngineConfig.cpp
+        src/configs/EngineConfig.h
+        src/render_loop/RenderLoop.cpp
+        src/render_loop/RenderLoop.h
+        src/render_loop/audio/AudioBlock.h
+        src/render_loop/audio/simple_sounds/SineOscillator.cpp
+        src/render_loop/audio/simple_sounds/SineOscillator.h
+        src/render_loop/audio/AudioBuffer.h
+        src/render_loop/audio/simple_sounds/SimpleSynth.cpp
+        src/render_loop/audio/simple_sounds/SimpleSynth.h
+        src/render_loop/audio/Voice.h
+        src/render_loop/audio/utils.h
+        src/commands/Command.cpp
+        src/commands/Command.h
+        src/commands/CommandQueue.cpp
+        src/commands/CommandQueue.h
+)
+
+# Also build the demo version
+add_executable(DAWCoreEngineDemo main.cpp
         src/CoreServiceEngine.cpp
         src/CoreServiceEngine.h
         src/configs/EngineConfig.cpp
@@ -30,3 +52,6 @@ add_executable(DAWCoreEngine main.cpp
 
 target_include_directories(DAWCoreEngine PRIVATE ${PULSE_INCLUDE_DIRS})
 target_link_libraries(DAWCoreEngine PRIVATE ${PULSE_LIBRARIES})
+
+target_include_directories(DAWCoreEngineDemo PRIVATE ${PULSE_INCLUDE_DIRS})
+target_link_libraries(DAWCoreEngineDemo PRIVATE ${PULSE_LIBRARIES})

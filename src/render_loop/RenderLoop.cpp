@@ -7,6 +7,8 @@
 #include "../commands/Command.h"
 #include "audio/SynthFactory.h"
 #include "audio/Sequencer.h"
+#include "audio/simple_sounds/SimpleSynth.h"
+#include "audio/ADSR.h"
 
 coreengine::RenderLoop::RenderLoop(const coreengine::EngineConfig& config)
         : positionClock(0), isPlaying(false) {
@@ -83,18 +85,9 @@ void coreengine::RenderLoop::processCommands() {
             // Timeline editing commands
             case CommandType::AddTrack: {
                 auto data = std::get<AddTrackData>(cmd->data);
-                std::unique_ptr<Instrument> instrument;
-
-                // Create instrument based on synthType
-                switch (data.synthType) {
-                    case 0: instrument = SynthFactory::createSineSynth(data.numVoices); break;
-                    case 1: instrument = SynthFactory::createSquareSynth(data.numVoices); break;
-                    case 2: instrument = SynthFactory::createSawtoothSynth(data.numVoices); break;
-                    case 3: instrument = SynthFactory::createPWMSynth(data.numVoices); break;
-                    default: instrument = SynthFactory::createSineSynth(data.numVoices); break;
-                }
-
-                timeline.addTrack(data.trackName, std::move(instrument));
+                double sr = static_cast<double>(audioBuffer->sampleRate);
+                auto instrument = SynthFactory::createByType(data.synthType, data.numVoices, sr);
+                timeline.addTrackWithId(data.trackId, data.trackName, std::move(instrument));
                 break;
             }
             case CommandType::RemoveTrack: {
@@ -166,6 +159,18 @@ void coreengine::RenderLoop::processCommands() {
                 Track* track = timeline.getTrack(data.trackId);
                 if (track) {
                     track->setSolo(data.value > 0.5f);
+                }
+                break;
+            }
+            case CommandType::SetADSR: {
+                auto data = std::get<ADSRData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (track) {
+                    auto* inst = track->getInstrument();
+                    if (auto* synth = dynamic_cast<SimpleSynth*>(inst)) {
+                        ADSR::Parameters params(data.attack, data.decay, data.sustain, data.release);
+                        synth->setADSRParameters(params);
+                    }
                 }
                 break;
             }

@@ -1,0 +1,113 @@
+.track-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.add-track-btn {
+  margin: 1rem;
+  padding: 0.75rem;
+  background: var(--accent);
+  color: white;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.add-track-btn:hover {
+  background: var(--accent-hover);
+}
+
+.tracks {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.track-item {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  gap: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.track-item:hover {
+  background: var(--bg-hover);
+}
+
+.track-item.selected {
+  background: var(--bg-hover);
+  border-left: 3px solid var(--accent);
+}
+
+.track-color {
+  width: 4px;
+  height: 40px;
+  border-radius: 2px;
+}
+
+.track-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.track-name {
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-type {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.track-controls {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.track-btn {
+  width: 24px;
+  height: 24px;
+  background: var(--bg-darker);
+  color: var(--text-secondary);
+  border-radius: 2px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.track-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.track-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 2rem;
+}
+
+.empty-state p {
+  margin: 0.5rem 0;
+}
+
+.empty-state .hint {
+  font-size: 0.875rem;
+  opacity: 0.7;
+}
+

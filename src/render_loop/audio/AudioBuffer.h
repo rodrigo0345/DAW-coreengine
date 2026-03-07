@@ -12,8 +12,8 @@ namespace coreengine {
             typedef float* ptr_float32;
             // this is a simple interleaved buffer, where channels are stored sequentially for each sample
             std::vector<ptr_float32> channels;
-            const uint64_t sampleRate;
-            const size_t numSamples;
+            uint64_t sampleRate;
+            size_t numSamples;
         };
 }
 
