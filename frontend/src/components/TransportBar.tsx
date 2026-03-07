@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
+import { syncTrackToEngine } from '../helpers/engine';
 import './TransportBar.css';
 
 const fmtTime = (samples: number, sr = 44100) => {
@@ -11,7 +12,7 @@ const fmtTime = (samples: number, sr = 44100) => {
 };
 
 export default function TransportBar() {
-  const { isPlaying, currentPosition, bpm, sampleRate, setBpm, setIsPlaying, setCurrentPosition } = useStore();
+  const { isPlaying, currentPosition, bpm, sampleRate, setBpm, setIsPlaying, setCurrentPosition, tracks } = useStore();
   const [hasEngine, setHasEngine] = useState(false);
 
   useEffect(() => { setHasEngine(!!window.electronAPI); }, []);
@@ -28,7 +29,15 @@ export default function TransportBar() {
     const res = await window.electronAPI?.pause();
     if (res?.success) setIsPlaying(false);
   };
-  const clampBpm = (v: number) => setBpm(Math.max(40, Math.min(300, v)));
+  const updateBpm = async (newBpm: number) => {
+    const val = Math.max(40, Math.min(300, newBpm));
+    setBpm(val);
+
+    // Sync all tracks to engine with new BPM
+    for (const t of useStore.getState().tracks) {
+      await syncTrackToEngine(t.id);
+    }
+  };
 
   return (
     <div className="transport-bar">
@@ -52,13 +61,13 @@ export default function TransportBar() {
             type="number"
             className="bpm-input"
             value={bpm}
-            onChange={(e) => clampBpm(Number(e.target.value))}
-            onBlur={(e) => { if (!e.target.value || Number(e.target.value) < 40) clampBpm(120); }}
+            onChange={(e) => updateBpm(Number(e.target.value))}
+            onBlur={(e) => { if (!e.target.value || Number(e.target.value) < 40) updateBpm(120); }}
             min={40} max={300} step={1}
           />
           <div className="bpm-btns">
-            <button onClick={() => clampBpm(bpm - 1)}>−</button>
-            <button onClick={() => clampBpm(bpm + 1)}>+</button>
+            <button onClick={() => updateBpm(bpm - 1)}>−</button>
+            <button onClick={() => updateBpm(bpm + 1)}>+</button>
           </div>
         </div>
         {!hasEngine && <span className="transport-warn">⚠ No engine</span>}

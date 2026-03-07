@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { useStore } from '../store';
+import { syncTrackToEngine } from '../helpers/engine';
+import { MIN_MIDI, MAX_MIDI } from '../helpers/music';
 
 /**
  * Global keyboard shortcuts – FL Studio inspired.
@@ -12,14 +14,18 @@ import { useStore } from '../store';
  *   Ctrl+B   Duplicate selected notes
  *   Ctrl+Z   Undo
  *   Ctrl+Shift+Z / Ctrl+Y   Redo
+ *   Ctrl+Up  Transpose selected +1 Octave (+12 semitones)
+ *   Ctrl+Down Transpose selected -1 Octave (-12 semitones)
  *   Delete / Backspace   Delete selected notes
  *   Space    Toggle play/pause
  */
 export function useKeyboardShortcuts() {
   const {
+    notes,
     selectedTrack,
     selectedNotes,
     removeNotes,
+    updateNotes,
     selectAllNotesForTrack,
     clearSelection,
     copySelected,
@@ -44,8 +50,14 @@ export function useKeyboardShortcuts() {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedNotes.length > 0) {
           e.preventDefault();
+          // Find affected tracks before removing to sync them
+          const trackIds = new Set(
+            notes.filter(n => selectedNotes.includes(n.id)).map(n => n.trackId)
+          );
+
           removeNotes([...selectedNotes]);
-          window.electronAPI?.rebuildTimeline();
+
+          trackIds.forEach(tid => syncTrackToEngine(tid));
         }
         return;
       }
@@ -64,6 +76,33 @@ export function useKeyboardShortcuts() {
       }
 
       if (!ctrl) return;
+
+      // ── Transpose Octave (Ctrl + Up/Down) ───────────────────────────────
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        if (selectedNotes.length === 0) return;
+        e.preventDefault();
+
+        const delta = e.key === 'ArrowUp' ? 12 : -12;
+        const updates: { id: string; changes: { midiNote: number } }[] = [];
+        const affectedTrackIds = new Set<number>();
+
+        selectedNotes.forEach(id => {
+          const note = notes.find(n => n.id === id);
+          if (!note) return;
+
+          const newMidi = note.midiNote + delta;
+          if (newMidi >= MIN_MIDI && newMidi <= MAX_MIDI) {
+            updates.push({ id, changes: { midiNote: newMidi } });
+            affectedTrackIds.add(note.trackId);
+          }
+        });
+
+        if (updates.length > 0) {
+          updateNotes(updates);
+          affectedTrackIds.forEach(tid => syncTrackToEngine(tid));
+        }
+        return;
+      }
 
       switch (e.key.toLowerCase()) {
         case 'a':
@@ -127,6 +166,7 @@ export function useKeyboardShortcuts() {
     isPlaying,
     setIsPlaying,
     setCurrentPosition,
+    notes,
+    updateNotes
   ]);
 }
-

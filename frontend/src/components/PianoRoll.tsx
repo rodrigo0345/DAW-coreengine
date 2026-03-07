@@ -47,6 +47,7 @@ export default function PianoRoll() {
     startState: {} as Record<string, { startBeat: number; startMidi: number; durationBeats: number }>,
     erasedAny: false,
     selectionBox: null as { x: number; y: number; w: number; h: number } | null,
+    shouldDeselectOthers: false, // Flag to handle "click selected note" vs "drag selected note"
   });
 
   // Force re-render when dragging so notes visually update
@@ -262,6 +263,10 @@ export default function PianoRoll() {
       } else if (d.hasMoved && d.noteId) {
         const note = useStore.getState().notes.find((n) => n.id === d.noteId);
         if (note) syncTrackToEngine(note.trackId);
+      } else if (!d.hasMoved && d.shouldDeselectOthers) {
+        // Did not move, and we clicked a note that was part of a selection.
+        // This implies the user intended to select JUST this note, not drag the group.
+        selectNote(d.noteId, false);
       }
 
       d.active = false;
@@ -298,6 +303,8 @@ export default function PianoRoll() {
           originY: e.clientY,
           startState: {},
           erasedAny: true,
+          selectionBox: null,
+          shouldDeselectOthers: false,
         };
         return;
       }
@@ -306,7 +313,39 @@ export default function PianoRoll() {
       if (!note) return;
 
       pushUndo();
-      selectNote(noteId, e.shiftKey || e.ctrlKey);
+
+      const isSelected = selectedNotes.includes(noteId);
+      const isModifier = e.shiftKey || e.ctrlKey;
+
+      // Determine what we are dragging immediately to avoid "double click" issue
+      // (State updates are async, so we calculate effective selection locally)
+      let draggingIds: string[] = [];
+      let shouldDeselectOthers = false;
+
+      if (isModifier) {
+        // Toggle / Add behavior
+        if (isSelected) {
+          // Toggling off?
+          selectNote(noteId, true);
+          draggingIds = selectedNotes.filter(id => id !== noteId);
+        } else {
+          // Adding
+          selectNote(noteId, true);
+          draggingIds = [...selectedNotes, noteId];
+        }
+      } else {
+        if (isSelected) {
+          // Clicked an already selected note -> Drag group
+          // Don't call selectNote yet, as it might deselect others.
+          // We defer deselection to onUp if no move occurred.
+          draggingIds = [...selectedNotes];
+          shouldDeselectOthers = true;
+        } else {
+          // Clicked unselected -> Exclusive select and drag
+          selectNote(noteId, false);
+          draggingIds = [noteId];
+        }
+      }
 
       drag.current = {
         active: true,
@@ -315,14 +354,16 @@ export default function PianoRoll() {
         hasMoved: false,
         originX: e.clientX,
         originY: e.clientY,
-        // Store initial state for all selected notes
+        // Calculate start state based on our LOCAL draggingIds, not stale store state
         startState: Object.fromEntries(
-          selectedNotes.map((id) => {
+          draggingIds.map((id) => {
             const n = trackNotes.find((nt) => nt.id === id);
             return [id, n ? { startBeat: n.startBeat, startMidi: n.midiNote, durationBeats: n.durationBeats } : null];
           }).filter(Boolean) as [string, { startBeat: number; startMidi: number; durationBeats: number }][],
         ),
         erasedAny: false,
+        selectionBox: null,
+        shouldDeselectOthers,
       };
     },
     [trackNotes, selectNote, pushUndo, selectedNotes, removeNote],
