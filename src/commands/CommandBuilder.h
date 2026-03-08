@@ -125,25 +125,28 @@ namespace coreengine {
                 ChordData{trackId, notes, startBeat, durationBeats, velocity, bpm, sampleRate}));
         }
 
-        bool addMelody(int trackId, const std::vector<int>& midiNotes,
+        [[nodiscard]]
+        bool addMelody(const int trackId, const std::vector<int>& midiNotes,
                       const std::vector<double>& startBeats,
                       const std::vector<double>& durationBeats,
                       const std::vector<float>& velocities,
-                      double bpm, uint64_t sampleRate) {
+                      const double bpm, const uint64_t sampleRate) const {
             return commandQueue.push(Command(CommandType::AddMelody,
                 MelodyData{trackId, midiNotes, startBeats, durationBeats,
                          velocities, bpm, sampleRate}));
         }
 
-        bool addArpeggio(int trackId, const std::vector<int>& notes,
-                        double startBeat, double noteLength, int repetitions,
-                        float velocity, double bpm, uint64_t sampleRate) {
+        [[nodiscard]]
+        bool addArpeggio(const int trackId, const std::vector<int>& notes,
+                        const double startBeat, const double noteLength, const int repetitions,
+                        const float velocity, const double bpm, const uint64_t sampleRate) const {
             return commandQueue.push(Command(CommandType::AddArpeggio,
                 ArpeggioData{trackId, notes, startBeat, noteLength, repetitions,
                            velocity, bpm, sampleRate}));
         }
 
-        bool rebuildTimeline() {
+        [[nodiscard]]
+        bool rebuildTimeline() const {
             return commandQueue.push(Command(CommandType::RebuildTimeline));
         }
 
@@ -151,17 +154,20 @@ namespace coreengine {
         // Effects
         // ============================================================
 
-        bool setTrackEffect(const SetTrackEffectData& d) {
+        [[nodiscard]]
+        bool setTrackEffect(const SetTrackEffectData& d) const {
             return commandQueue.push(Command(CommandType::SetTrackEffect, d));
         }
 
-        bool removeTrackEffect(int trackId, const std::string& effectType) {
+        [[nodiscard]]
+        bool removeTrackEffect(const int trackId, const std::string& effectType) const {
             return commandQueue.push(Command(CommandType::RemoveTrackEffect,
                 RemoveTrackEffectData{trackId, effectType}));
         }
 
-        bool setEffectParam(int trackId, const std::string& effectType,
-                            const std::string& paramName, float value) {
+        [[nodiscard]]
+        bool setEffectParam(const int trackId, const std::string& effectType,
+                            const std::string& paramName, const float value) const {
             return commandQueue.push(Command(CommandType::SetEffectParam,
                 SetEffectParamData{trackId, effectType, paramName, value}));
         }

@@ -68,13 +68,12 @@ namespace coreengine {
         }
 
         // Add a note using musical time (bars, beats)
-        void addNoteMusical(int trackId, double startBeat, double durationBeats, int midiNote, float velocity, double bpm, uint64_t sampleRate) {
-            double beatsPerSecond = bpm / 60.0;
-            double samplesPerBeat = sampleRate / beatsPerSecond;
-
-            uint64_t startSample = static_cast<uint64_t>(startBeat * samplesPerBeat);
-            uint64_t durationSamples = static_cast<uint64_t>(durationBeats * samplesPerBeat);
-
+        void addNoteMusical(const int trackId, const double startBeat,
+            const double durationBeats, const int midiNote, const float velocity,
+            const double bpm, const uint64_t sampleRate) {
+            const double samplesPerBeat = (60.0 * static_cast<double>(sampleRate)) / bpm;
+            const auto startSample = static_cast<uint64_t>(startBeat * samplesPerBeat);
+            const auto durationSamples = static_cast<uint64_t>(durationBeats * samplesPerBeat);
             addNote(trackId, startSample, durationSamples, midiNote, velocity);
         }
 

@@ -16,14 +16,12 @@ namespace coreengine {
 
     class CommandQueue {
     public:
-        // Adjust size based on how many simultaneous commands you expect (must be power of 2 for speed)
-        explicit CommandQueue(const size_t capacity = DEFAULT_QUEUE_CAPACITY)
-            : capacity(capacity), buffer(capacity) {}
+        explicit CommandQueue(const size_t defaultCapacity = DEFAULT_QUEUE_CAPACITY)
+            : capacity(defaultCapacity), buffer(defaultCapacity) {}
 
-        // Called by UI Thread
         bool push(const Command& cmd) {
-            size_t currentWrite = writeIndex.load(std::memory_order_relaxed);
-            size_t nextWrite = (currentWrite + 1) % capacity;
+            const size_t currentWrite = writeIndex.load(std::memory_order_relaxed);
+            const size_t nextWrite = (currentWrite + 1) % capacity;
 
             if (nextWrite == readIndex.load(std::memory_order_acquire)) {
                 return false; // Queue full

@@ -6,8 +6,8 @@
 #include <pulse/error.h>
 #include <iostream>
 
-coreengine::CoreServiceEngine::CoreServiceEngine(const EngineConfig& config)
-    : renderLoop(config), config(config) {
+coreengine::CoreServiceEngine::CoreServiceEngine(const EngineConfig& engineConfig)
+    : renderLoop(engineConfig), config(engineConfig) {
 
     pa_sample_spec ss;
     ss.format = PA_SAMPLE_FLOAT32LE;

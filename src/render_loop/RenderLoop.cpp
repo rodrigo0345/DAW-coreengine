@@ -28,8 +28,8 @@ coreengine::RenderLoop::RenderLoop(const coreengine::EngineConfig& config)
     const auto numChannels = config.getChannelsVal();
     audioBuffer->channels.resize(numChannels);
     for (int i = 0; i < numChannels; ++i) {
-        audioBuffer->channels[i] = new float[numSamples];
-        std::fill_n(audioBuffer->channels[i], numSamples, 0.0f); // reset
+        audioBuffer->channels[static_cast<size_t>(i)] = new float[numSamples];
+        std::fill_n(audioBuffer->channels[static_cast<size_t>(i)], numSamples, 0.0f); // reset
     }
 }
 
@@ -95,7 +95,7 @@ void coreengine::RenderLoop::processCommands() {
                 break;
             }
             case CommandType::RemoveTrack: {
-                auto data = std::get<TrackControlData>(cmd->data);
+                // auto data = std::get<TrackControlData>(cmd->data);
                 // TODO: Implement track removal in Timeline class
                 break;
             }
@@ -247,7 +247,7 @@ void coreengine::RenderLoop::processCommands() {
                 auto& laneMap = automationData_[data.trackId];
                 auto& pts = laneMap[data.paramName];
                 pts.clear();
-                const double spb = 60.0 / data.bpm * static_cast<double>(data.sampleRate);
+                // const double spb = 60.0 / data.bpm * static_cast<double>(data.sampleRate);
                 for (auto& p : data.points) {
                     pts.push_back({ p.beat, p.value });
                 }
@@ -302,7 +302,7 @@ void coreengine::RenderLoop::processCommands() {
                 break;
             }
             case CommandType::AddInstrument: {
-                auto data = std::get<InstrumentData>(cmd->data);
+                // auto data = std::get<InstrumentData>(cmd->data);
                 // Logic to instantiate a new AudioBlock and add to DAG
                 break;
             }
@@ -337,9 +337,9 @@ void coreengine::RenderLoop::reset() {
     }
 }
 
-void coreengine::RenderLoop::gotoPosition(uint64_t positionClock) {
-    this->positionClock = positionClock;
-    timeline.seekTo(positionClock);
+void coreengine::RenderLoop::gotoPosition(uint64_t userPositionClock) {
+    this->positionClock = userPositionClock;
+    timeline.seekTo(userPositionClock);
 }
 
 void coreengine::RenderLoop::addProcessor(std::unique_ptr<AudioBlock> block) {
@@ -412,21 +412,28 @@ void coreengine::RenderLoop::processNextBlock() {
 // ── Automation ────────────────────────────────────────────────────────────────
 
 float coreengine::RenderLoop::interpolateAutomation(
-    const std::vector<AutomationPoint>& pts, double beat) const
+    const std::vector<AutomationPoint>& pts, const double beat) const
 {
-    if (pts.empty()) return 0.f;
-    if (beat <= pts.front().beat) return pts.front().value;
-    if (beat >= pts.back().beat)  return pts.back().value;
+    if (pts.empty()) [[unlikely]] return 0.0f;
 
-    // Binary search for the segment containing `beat`
-    size_t lo = 0, hi = pts.size() - 1;
-    while (hi - lo > 1) {
-        size_t mid = (lo + hi) / 2;
-        if (pts[mid].beat <= beat) lo = mid; else hi = mid;
-    }
-    // Linear interpolation between pts[lo] and pts[hi]
-    double t = (beat - pts[lo].beat) / (pts[hi].beat - pts[lo].beat);
-    return static_cast<float>(pts[lo].value + t * (pts[hi].value - pts[lo].value));
+    const auto& front = pts.front();
+    if (beat <= front.beat) return front.value;
+    const auto& back = pts.back();
+    if (beat >= back.beat) return back.value;
+
+    const auto it = std::upper_bound(pts.begin(), pts.end(), beat,
+        [](double b, const AutomationPoint& p) {
+            return b < p.beat;
+        });
+
+    const auto& p1 = *std::prev(it);
+    const auto& p2 = *it;
+    const double beatRange = p2.beat - p1.beat;
+    const double t = (beat - p1.beat) / beatRange;
+
+    // Linear interpolation: v1 + t * (v2 - v1)
+    const auto fT = static_cast<float>(t);
+    return p1.value + fT * (p2.value - p1.value);
 }
 
 void coreengine::RenderLoop::applyAutomation(uint64_t blockStartSample, uint64_t blockSamples)
@@ -436,7 +443,7 @@ void coreengine::RenderLoop::applyAutomation(uint64_t blockStartSample, uint64_t
     const double sr = static_cast<double>(audioBuffer->sampleRate);
     // Use the beat at the centre of the block for a single-value update per block.
     // This is accurate enough for typical block sizes (512 samples @ 44100 = ~11.6ms).
-    const double beat = (static_cast<double>(blockStartSample) + blockSamples * 0.5) / (sr * 60.0 / 120.0);
+    const double beat = (static_cast<double>(blockStartSample) + static_cast<double>(blockSamples) * 0.5) / (sr * 60.0 / 120.0);
     // NOTE: we store bpm per-lane. Without it here we use a fallback. A proper solution
     // is to read bpm from a member or timeline — for now 120 is the default and the
     // frontend sends per-lane bpm via SetAutomationLane which we ignore in the beat calc here.

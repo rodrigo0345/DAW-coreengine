@@ -22,23 +22,27 @@ public:
         : pulseWidth_(pulseWidth) {}
 
     void generate(std::shared_ptr<AudioBuffer> buffer,
-                 float frequency,
-                 float amplitude,
+                 const float frequency,
+                 const float amplitude,
                  float& phase) override {
-        const auto sampleRate = buffer->sampleRate;
-        const auto phaseIncrement = static_cast<float>(2.0f * M_PI * frequency / sampleRate);
+        const auto sr = static_cast<float>(buffer->sampleRate);
+        const float phaseInc = frequency / sr;
 
-        for (size_t s = 0; s < buffer->numSamples; ++s) {
-            // Normalize phase to 0-1 range
-            const float normalizedPhase = phase / (2.0f * M_PI);
-            const float sample = (normalizedPhase < pulseWidth_ ? 1.0f : -1.0f) * amplitude;
+        // 2. Local cache for speed
+        const size_t numSamples = buffer->numSamples;
+        const float pw = pulseWidth_; // Pulse width in range [0.0, 1.0]
+        const auto& channels = buffer->channels;
 
-            for (const auto& channel : buffer->channels) {
+        for (size_t s = 0; s < numSamples; ++s) {
+            const float sample = ((phase < pw) ? 1.0f : -1.0f) * amplitude;
+            for (const auto& channel : channels) {
                 channel[s] += sample;
             }
 
-            phase += phaseIncrement;
-            if (phase >= 2.0f * M_PI) phase -= 2.0f * M_PI;
+            phase += phaseInc;
+            if (phase >= 1.0f) [[unlikely]] {
+                phase -= 1.0f;
+            }
         }
     }
 

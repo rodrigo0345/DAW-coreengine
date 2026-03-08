@@ -16,7 +16,7 @@ namespace coreengine {
  */
 class ReverbEffect : public AudioEffect {
 public:
-    static constexpr float kSampleRate = 44100.f;
+    static constexpr float kSampleRate = static_cast<float>(SampleRate::VIDEO);
 
     explicit ReverbEffect(float roomSize = 0.5f, float damping = 0.5f)
     {
@@ -106,18 +106,34 @@ private:
     float damping_  = 0.5f;
 
     void initBuffers() {
-        float sr = kSampleRate;
-        for (int i = 0; i < 8; ++i) {
-            auto sz = static_cast<size_t>(kCombTuning[i] * sr / 44100.f);
-            combL_[i].buf.assign(sz, 0.f);
-            combR_[i].buf.assign(sz + 23, 0.f); // slight stereo spread
+        constexpr auto sr = static_cast<float>(kSampleRate);
+        constexpr float tuningScale = sr / 44100.0f;
+
+        // Use size_t for counters to match buffer indexing and avoid signed-to-unsigned promotion
+        for (size_t i = 0uz; i < 8uz; ++i) {
+            // static_cast the array access if kCombTuning isn't already float
+            const float combSizeBase = static_cast<float>(kCombTuning[i]) * tuningScale;
+
+            const auto szL = static_cast<size_t>(combSizeBase);
+            const size_t szR = szL + 23uz;
+
+            combL_[i].buf.assign(szL, 0.0f);
+            combR_[i].buf.assign(szR, 0.0f);
         }
-        for (int i = 0; i < 4; ++i) {
-            auto sz = static_cast<size_t>(kAllpassTuning[i] * sr / 44100.f);
-            allpassL_[i].buf.assign(sz, 0.f);
-            allpassR_[i].buf.assign(sz + 23, 0.f);
-            allpassL_[i].feedback = allpassR_[i].feedback = 0.5f;
+
+        for (size_t i = 0uz; i < 4uz; ++i) {
+            const float allpassSizeBase = static_cast<float>(kAllpassTuning[i]) * tuningScale;
+
+            const auto szL = static_cast<size_t>(allpassSizeBase);
+            const size_t szR = szL + 23uz;
+
+            allpassL_[i].buf.assign(szL, 0.0f);
+            allpassR_[i].buf.assign(szR, 0.0f);
+
+            allpassL_[i].feedback = 0.5f;
+            allpassR_[i].feedback = 0.5f;
         }
+
         updateCoefficients();
     }
 

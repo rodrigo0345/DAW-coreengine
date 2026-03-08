@@ -11,6 +11,7 @@
 #include "Oscillator.h"
 #include "ADSR.h"
 #include "EffectChain.h"
+#include "../../configs/EngineConfig.h"
 
 namespace coreengine {
     /**
@@ -20,16 +21,19 @@ namespace coreengine {
      */
     class Voice: public coreengine::AudioBlock {
     public:
-        explicit Voice(std::unique_ptr<Oscillator> osc, double sampleRate = 48000.0)
-            : oscillator(std::move(osc))
-            , sampleRate_(sampleRate)
-            , adsr_(sampleRate)
-            , frequency_(0.0f)
+        explicit Voice(std::unique_ptr<Oscillator> osc, const double sampleRate = static_cast<double>(SampleRate::STUDIO))
+        : frequency_(0.0f)
             , phase_(0.0f)
             , amplitude_(0.0f)
-            , isActive(false)
-            , midiNote(-1)
-        {}
+            , sampleRate_(sampleRate)
+            , oscillator(std::move(osc))
+            , adsr_(sampleRate)
+            , effectChain_()
+            , scratchBuf_()
+        {
+            isActive = false;
+            midiNote = -1;
+        }
 
         bool isActive;
         int midiNote;
@@ -157,15 +161,15 @@ namespace coreengine {
         }
 
     private:
-        std::unique_ptr<Oscillator> oscillator;
-        double sampleRate_;
-        ADSR adsr_;
-        EffectChain effectChain_;
-        std::vector<float> scratchBuf_;   // per-voice scratch to avoid corrupting shared buffer
-
         float frequency_;
         float phase_;
         float amplitude_;
+        double sampleRate_;
+
+        std::unique_ptr<Oscillator> oscillator;
+        ADSR adsr_;
+        EffectChain effectChain_;
+        std::vector<float> scratchBuf_;   // per-voice scratch to avoid corrupting shared buffer
     };
 }
 #endif //DAWCOREENGINE_VOICE_H

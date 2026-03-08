@@ -7,19 +7,28 @@
 #include <memory>
 
 void coreengine::SineOscillator::generate(std::shared_ptr<coreengine::AudioBuffer> buffer,
-                                          float frequency,
-                                          float amplitude,
+                                          const float frequency,
+                                          const float amplitude,
                                           float& phase) {
-    const auto sampleRate = buffer->sampleRate;
-    const auto phaseIncrement = static_cast<float>(2.0f * M_PI * frequency / sampleRate);
+    const auto sampleRate = static_cast<float>(buffer->sampleRate);
+    constexpr float pi2 = 2.0f * std::numbers::pi_v<float>;
+    const float phaseInc = (pi2 * frequency) / sampleRate;
 
-    for (size_t s = 0; s < buffer->numSamples; ++s) {
+    const size_t numSamples = buffer->numSamples;
+    const auto& channels = buffer->channels;
+
+    for (size_t s = 0; s < numSamples; ++s) {
         const float sample = std::sin(phase) * amplitude;
-        for (const auto& channel : buffer->channels) {
+
+        // Compiler can vectorize this inner loop
+        for (const auto& channel : channels) {
             channel[s] += sample;
         }
-        phase += phaseIncrement;
-        if (phase >= 2.0f * M_PI) phase -= 2.0f * M_PI;
+
+        phase += phaseInc;
     }
+
+    // Wrap phase once per block instead of once per sample
+    phase = std::fmod(phase, pi2);
 }
 

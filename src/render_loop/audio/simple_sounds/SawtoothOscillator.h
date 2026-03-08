@@ -19,23 +19,27 @@ namespace coreengine {
 class SawtoothOscillator: public Oscillator {
 public:
     void generate(std::shared_ptr<AudioBuffer> buffer,
-                 float frequency,
-                 float amplitude,
+                 const float frequency,
+                 const float amplitude,
                  float& phase) override {
-        const auto sampleRate = buffer->sampleRate;
-        const auto phaseIncrement = static_cast<float>(2.0f * M_PI * frequency / sampleRate);
+        const auto sr = static_cast<float>(buffer->sampleRate);
+        const float phaseInc = frequency / sr;
 
-        for (size_t s = 0; s < buffer->numSamples; ++s) {
-            // Normalize phase to 0-1 range, then scale to -1 to 1
-            const float normalizedPhase = phase / (2.0f * M_PI);
-            const float sample = (2.0f * normalizedPhase - 1.0f) * amplitude;
+        const size_t numSamples = buffer->numSamples;
+        const auto& channels = buffer->channels;
 
-            for (const auto& channel : buffer->channels) {
+        for (size_t s = 0; s < numSamples; ++s) {
+            // Map normalized phase [0, 1) to waveform range [-1, 1]
+            // Calculation: (Phase * 2) - 1
+            const float sample = (2.0f * phase - 1.0f) * amplitude;
+            for (auto& channel : channels) {
                 channel[s] += sample;
             }
+            phase += phaseInc;
 
-            phase += phaseIncrement;
-            if (phase >= 2.0f * M_PI) phase -= 2.0f * M_PI;
+            if (phase >= 1.0f) [[unlikely]] {
+                phase -= 1.0f;
+            }
         }
     }
 

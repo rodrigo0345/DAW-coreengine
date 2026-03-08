@@ -26,12 +26,12 @@ class SamplePlayer : public Instrument {
 public:
     static constexpr int DEFAULT_ROOT_NOTE = 69; // A4
 
-    explicit SamplePlayer(int numVoices = 8, double sampleRate = 196000.0,
+    explicit SamplePlayer(int numVoices = 8, double sampleRate = 48000.0,
                           int rootNote = DEFAULT_ROOT_NOTE)
         : numVoices_(numVoices), engineSampleRate_(sampleRate)
         , rootNote_(rootNote), oneShot_(true)
     {
-        voices_.resize(numVoices_);
+        voices_.resize(static_cast<size_t>(numVoices_));
     }
 
     // ── File loading ──────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ public:
         fileSampleRate_   = static_cast<double>(info.samplerate);
         numFileChannels_  = info.channels;
         numFrames_        = static_cast<size_t>(info.frames);
-        sampleData_.resize(numFrames_ * numFileChannels_);
+        sampleData_.resize(numFrames_ * static_cast<size_t>(numFileChannels_));
         sf_readf_float(sf, sampleData_.data(), static_cast<sf_count_t>(numFrames_));
         sf_close(sf);
         filePath_ = path;
@@ -56,7 +56,7 @@ public:
         n = std::max(1, n);
         allNotesOff();
         voices_.clear();
-        voices_.resize(n);
+        voices_.resize(static_cast<size_t>(n));
         numVoices_ = n;
     }
     [[nodiscard]] int getVoiceCount() const { return numVoices_; }
@@ -78,7 +78,7 @@ public:
         if (!v) v = stealVoice();
         if (!v) return;
 
-        const double semi = static_cast<double>(midiNote - rootNote_);
+        const auto semi = static_cast<double>(midiNote - rootNote_);
         v->speed    = std::pow(2.0, semi / 12.0) * (fileSampleRate_ / engineSampleRate_);
         v->readPos  = 0.0;
         v->midiNote = midiNote;
@@ -102,30 +102,60 @@ public:
 
     void processBlock(std::shared_ptr<AudioBuffer> buffer) override {
         if (!isLoaded() || !buffer) return;
-        const size_t ns  = buffer->numSamples;
+
+        const size_t ns = buffer->numSamples;
         const size_t nch = buffer->channels.size();
+        const auto invFileChannels = 1.0f / static_cast<float>(numFileChannels_);
+        const auto totalFrames = static_cast<double>(numFrames_);
 
         for (auto& v : voices_) {
-            if (!v.active || !v.adsr) continue;
+            if (!v.active) continue;
+
+            // Cache voice state to local registers
+            double readPos = v.readPos;
+            const double speed = v.speed;
+            const float velocity = v.velocity;
+            const float* dataPtr = sampleData_.data();
+
             for (size_t s = 0; s < ns; ++s) {
                 const float env = v.adsr->process();
-                if (!v.adsr->isActive() || v.readPos >= static_cast<double>(numFrames_)) {
-                    v.active = false; break;
+
+                // Check bounds and ADSR state
+                if (!v.adsr->isActive() || readPos >= totalFrames - 1.0) [[unlikely]] {
+                    v.active = false;
+                    v.readPos = readPos;
+                    break;
                 }
-                const auto   fi   = static_cast<size_t>(v.readPos);
-                const double frac = v.readPos - static_cast<double>(fi);
+
+                const auto fi = static_cast<size_t>(readPos);
+                const auto frac = static_cast<float>(readPos - static_cast<double>(fi));
+                const float invFrac = 1.0f - frac;
+
+                // Combined gain factor: (Velocity * Envelope) / Channels
+                const float totalGain = velocity * env * invFileChannels;
+
+                // Manual unrolling/summing of file channels
                 float mono = 0.0f;
-                for (int fc = 0; fc < numFileChannels_; ++fc) {
-                    const size_t i0 = fi * numFileChannels_ + fc;
-                    const size_t i1 = std::min(i0 + numFileChannels_, sampleData_.size() - 1);
-                    mono += static_cast<float>(sampleData_[i0]*(1.0-frac) + sampleData_[i1]*frac);
+                const size_t baseIdx = fi * static_cast<size_t>(numFileChannels_);
+
+                for (size_t fc = 0; fc < static_cast<size_t>(numFileChannels_); ++fc) {
+                    const float s0 = dataPtr[baseIdx + fc];
+                    const float s1 = dataPtr[baseIdx + fc + static_cast<size_t>(numFileChannels_)];
+                    mono += (s0 * invFrac) + (s1 * frac);
                 }
-                mono /= static_cast<float>(numFileChannels_);
-                const float out = mono * env * v.velocity;
-                for (size_t c = 0; c < nch; ++c) buffer->channels[c][s] += out;
-                v.readPos += v.speed;
+
+                const float out = mono * totalGain;
+
+                // Vectorizable write to output channels
+                for (size_t c = 0; c < nch; ++c) {
+                    buffer->channels[c][s] += out;
+                }
+
+                readPos += speed;
             }
+            v.readPos = readPos;
         }
+
         effectChain_.process(buffer);
     }
 

@@ -218,9 +218,10 @@ namespace coreengine {
 
     private:
         void calculateStageSamples() {
-            attackSamples_ = static_cast<int>(parameters_.attackTime * sampleRate_);
-            decaySamples_ = static_cast<int>(parameters_.decayTime * sampleRate_);
-            releaseSamples_ = static_cast<int>(parameters_.releaseTime * sampleRate_);
+            const auto sr = static_cast<float>(sampleRate_);
+            attackSamples_  = static_cast<int>(parameters_.attackTime  * sr);
+            decaySamples_   = static_cast<int>(parameters_.decayTime   * sr);
+            releaseSamples_ = static_cast<int>(parameters_.releaseTime * sr);
         }
 
         double sampleRate_;
