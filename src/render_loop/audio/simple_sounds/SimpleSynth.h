@@ -162,6 +162,19 @@ namespace coreengine {
             }
         }
 
+        /**
+         * Set number of polyphonic voices at runtime (voices are rebuilt)
+         */
+        void setVoiceCount(int numVoices) {
+            numVoices = std::max(1, numVoices);
+            for (const auto& v : voices) v->stop();
+            voices.clear();
+            voices.reserve(numVoices);
+            for (int i = 0; i < numVoices; ++i) {
+                voices.push_back(VoiceFactory::createVoice(oscillatorCreator_, sampleRate_, adsrParameters_));
+            }
+        }
+
     private:
         std::vector<std::unique_ptr<Voice>> voices;
         VoiceFactory::OscillatorCreator oscillatorCreator_;

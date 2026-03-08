@@ -298,10 +298,41 @@ void processCommand(const std::string& line, coreengine::CommandBuilder& cmd) {
         double      bpm       = SimpleJSON::getDouble(dataJson, "bpm");
         uint64_t    sr        = static_cast<uint64_t>(SimpleJSON::getInt(dataJson, "sampleRate"));
         if (bpm <= 0) bpm = 120.0;
-        if (sr   == 0) sr  = 44100;
+        if (sr   == 0) sr  = 196000;
         cmd.clearAutomationLane(trackId, paramName, bpm, sr);
         std::cout << "OK: ClearAutomationLane track=" << trackId
                   << " param=" << paramName << "\n";
+    }
+    else if (type == "LoadSample") {
+        int         trackId  = SimpleJSON::getInt(dataJson, "trackId");
+        std::string filePath = SimpleJSON::getString(dataJson, "filePath");
+        int         rootNote = SimpleJSON::getInt(dataJson, "rootNote");
+        bool        oneShot  = SimpleJSON::getBool(dataJson, "oneShot");
+        if (rootNote == 0) rootNote = 69; // A4 default
+        cmd.loadSample(trackId, filePath, rootNote, oneShot);
+        std::cout << "OK: LoadSample track=" << trackId
+                  << " file=" << filePath
+                  << " root=" << rootNote
+                  << " oneShot=" << oneShot << "\n";
+    }
+    else if (type == "SetVoiceCount") {
+        int trackId   = SimpleJSON::getInt(dataJson, "trackId");
+        int numVoices = SimpleJSON::getInt(dataJson, "numVoices");
+        if (numVoices < 1) numVoices = 1;
+        cmd.setVoiceCount(trackId, numVoices);
+        std::cout << "OK: SetVoiceCount track=" << trackId << " voices=" << numVoices << "\n";
+    }
+    else if (type == "SetSynthType") {
+        int    trackId   = SimpleJSON::getInt(dataJson, "trackId");
+        int    synthType = SimpleJSON::getInt(dataJson, "synthType");
+        int    numVoices = SimpleJSON::getInt(dataJson, "numVoices");
+        double sr        = SimpleJSON::getDouble(dataJson, "sampleRate");
+        if (numVoices < 1) numVoices = 8;
+        if (sr <= 0)       sr = 196000.0;
+        cmd.setSynthType(trackId, synthType, numVoices, sr);
+        std::cout << "OK: SetSynthType track=" << trackId
+                  << " type=" << synthType
+                  << " voices=" << numVoices << "\n";
     }
 
     else {
@@ -315,22 +346,21 @@ int main() {
     std::cout << "=== DAW Core Engine - Interactive Mode ===\n";
     std::cout << "Waiting for commands from frontend...\n\n";
 
-    // Setup audio engine
     coreengine::EngineConfig config{};
-    config.sampleRate = coreengine::SampleRate::CD;
-    config.dspFormat = coreengine::DspFormat::FLOAT32;
-    config.channels = coreengine::Channels::MONO;
+    config.sampleRate = coreengine::SampleRate::STUDIO;   // 196 kHz
+    config.dspFormat  = coreengine::DspFormat::FLOAT32;
+    config.channels   = coreengine::Channels::STEREO;
 
     coreengine::CoreServiceEngine engine(config);
     coreengine::CommandBuilder cmd(engine.getRenderLoop().getCommandQueue());
 
-    // Start audio engine
     engine.start();
-    std::cout << "Audio engine started\n";
-    std::cout << "Ready to receive commands (JSON format)\n\n";
+    std::printf("Engine started with sample rate %u Hz, format %s, channels %u\n",
+        config.getSampleRateVal(),
+        (config.dspFormat == coreengine::DspFormat::FLOAT32) ? "float32" : "float64",
+        config.getChannelsVal());
     std::cout.flush();
 
-    // Command input loop
     std::string line;
     while (std::getline(std::cin, line)) {
         try {
@@ -341,7 +371,6 @@ int main() {
         }
     }
 
-    // Cleanup
     std::cout << "Shutting down...\n";
     engine.stop();
 

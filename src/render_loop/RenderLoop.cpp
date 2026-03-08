@@ -3,9 +3,10 @@
 //
 
 #include "RenderLoop.h"
-
+#include <iostream>
 #include "../commands/Command.h"
 #include "audio/SynthFactory.h"
+#include "audio/SamplePlayer.h"
 #include "audio/Sequencer.h"
 #include "audio/simple_sounds/SimpleSynth.h"
 #include "audio/ADSR.h"
@@ -260,6 +261,46 @@ void coreengine::RenderLoop::processCommands() {
                 automationData_[data.trackId].erase(data.paramName);
                 break;
             }
+            case CommandType::LoadSample: {
+                auto data = std::get<LoadSampleData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (!track) break;
+                double sr = static_cast<double>(audioBuffer->sampleRate);
+                auto sampler = std::make_unique<SamplePlayer>(8, sr, data.rootNote);
+                sampler->setOneShot(data.oneShot);
+                if (!sampler->loadFile(data.filePath)) {
+                    std::cerr << "SamplePlayer: failed to load " << data.filePath << "\n";
+                    break;
+                }
+                track->replaceInstrument(std::move(sampler));
+                break;
+            }
+            case CommandType::SetVoiceCount: {
+                auto data = std::get<SetVoiceCountData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (!track) break;
+                auto* inst = track->getInstrument();
+                if (auto* synth = dynamic_cast<SimpleSynth*>(inst)) {
+                    synth->setVoiceCount(data.numVoices);
+                } else if (auto* sampler = dynamic_cast<SamplePlayer*>(inst)) {
+                    sampler->setVoiceCount(data.numVoices);
+                }
+                break;
+            }
+            case CommandType::SetSynthType: {
+                auto data = std::get<SetSynthTypeData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (!track) break;
+                if (data.synthType == 4) {
+                    // Sampler — instrument gets loaded separately via LoadSample
+                    auto sampler = std::make_unique<SamplePlayer>(data.numVoices, data.sampleRate);
+                    track->replaceInstrument(std::move(sampler));
+                } else {
+                    auto newInst = SynthFactory::createByType(data.synthType, data.numVoices, data.sampleRate);
+                    track->replaceInstrument(std::move(newInst));
+                }
+                break;
+            }
             case CommandType::AddInstrument: {
                 auto data = std::get<InstrumentData>(cmd->data);
                 // Logic to instantiate a new AudioBlock and add to DAG
@@ -330,6 +371,39 @@ void coreengine::RenderLoop::processNextBlock() {
     // Process any additional audio blocks (effects, etc.)
     for (const auto& processor : processorBlocks) {
         processor->processBlock(audioBuffer);
+    }
+
+    // ── Master limiter (brick-wall, -0.1 dBFS) ───────────────────────────────
+    // Simple feed-forward peak limiter with fast attack / slow release.
+    // Prevents any sample from exceeding ±0.989 (≈ -0.1 dBFS).
+    {
+        constexpr float CEILING    = 0.989f;      // -0.1 dBFS
+        constexpr float ATTACK_TC  = 0.001f;      // 1 ms attack
+        constexpr float RELEASE_TC = 0.200f;      // 200 ms release
+        const float     sr         = static_cast<float>(audioBuffer->sampleRate);
+        const float     attackCoef  = std::exp(-1.0f / (ATTACK_TC  * sr));
+        const float     releaseCoef = std::exp(-1.0f / (RELEASE_TC * sr));
+
+        for (size_t s = 0; s < audioBuffer->numSamples; ++s) {
+            // Find peak across all channels
+            float peak = 0.0f;
+            for (auto* ch : audioBuffer->channels)
+                peak = std::max(peak, std::abs(ch[s]));
+
+            // Gain-computer: how much gain reduction is needed?
+            const float targetGain = (peak > CEILING) ? (CEILING / peak) : 1.0f;
+
+            // Smooth the gain reduction with attack/release
+            if (targetGain < limiterGain_) {
+                limiterGain_ = attackCoef  * limiterGain_ + (1.0f - attackCoef)  * targetGain;
+            } else {
+                limiterGain_ = releaseCoef * limiterGain_ + (1.0f - releaseCoef) * targetGain;
+            }
+
+            // Apply gain
+            for (auto* ch : audioBuffer->channels)
+                ch[s] *= limiterGain_;
+        }
     }
 
     this->positionClock += audioBuffer->numSamples;

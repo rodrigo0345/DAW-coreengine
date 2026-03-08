@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <map>
+#include <cmath>
 #include <string>
 #include "../commands/CommandQueue.h"
 #include "../configs/EngineConfig.h"
@@ -54,6 +55,9 @@ namespace coreengine {
         bool isPlaying;
 
         std::vector<std::unique_ptr<coreengine::AudioBlock>> processorBlocks;
+
+        // ── Master limiter state ──────────────────────────────────────────────
+        float limiterGain_ = 1.0f;   // smoothed gain (1.0 = no reduction)
 
         // ── Automation ────────────────────────────────────────────────────────
         struct AutomationPoint { double beat; float value; };

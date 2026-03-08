@@ -45,8 +45,13 @@ namespace coreengine {
         SetEffectParam,    // set a float param on a named effect
 
         // Automation
-        SetAutomationLane,   // replace all points for a track/param combo
-        ClearAutomationLane, // clear all points for a track/param combo
+        SetAutomationLane,
+        ClearAutomationLane,
+
+        // Sampler / instrument management
+        LoadSample,     // load WAV/FLAC file into a SamplePlayer track
+        SetVoiceCount,  // change number of voices on a track's instrument
+        SetSynthType,   // replace synth type (sine/square/saw/pwm/sampler)
 
         // Legacy
         AddInstrument,
@@ -162,18 +167,35 @@ namespace coreengine {
     };
 
     struct AutomationPointData {
-        double beat;   // position in beats
-        float  value;  // 0–1 normalised
+        double beat;
+        float  value;
     };
 
-    // Replaces all automation points for one track/param combo in one shot.
-    // paramName encodes both kind and param, e.g. "volume", "Reverb.mix", "Delay.feedback"
     struct AutomationLaneData {
         int         trackId;
-        std::string paramName;      // "volume" | "Reverb.mix" | "Delay.delayMs" | …
+        std::string paramName;
         std::vector<AutomationPointData> points;
         double bpm;
         uint64_t sampleRate;
+    };
+
+    struct LoadSampleData {
+        int         trackId;
+        std::string filePath;   // absolute path to WAV/FLAC/MP3
+        int         rootNote;   // MIDI root note (default 69 = A4)
+        bool        oneShot;    // true = drum/one-shot, false = sustain
+    };
+
+    struct SetVoiceCountData {
+        int trackId;
+        int numVoices;
+    };
+
+    struct SetSynthTypeData {
+        int trackId;
+        int synthType;   // 0=Sine 1=Square 2=Saw 3=PWM 4=Sampler
+        int numVoices;
+        double sampleRate;
     };
 
     using CommandData = std::variant<
@@ -194,7 +216,10 @@ namespace coreengine {
         SetTrackEffectData,
         RemoveTrackEffectData,
         SetEffectParamData,
-        AutomationLaneData
+        AutomationLaneData,
+        LoadSampleData,
+        SetVoiceCountData,
+        SetSynthTypeData
     >;
 
     struct Command {

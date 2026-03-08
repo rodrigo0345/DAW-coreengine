@@ -7,6 +7,9 @@ set(CMAKE_CXX_STANDARD 23)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PULSE REQUIRED libpulse libpulse-simple)
 
+# libsndfile for WAV/FLAC/MP3 sample loading
+pkg_check_modules(SNDFILE REQUIRED sndfile)
+
 add_executable(DAWCoreEngine main_interactive.cpp
         src/CoreServiceEngine.cpp
         src/CoreServiceEngine.h
@@ -50,8 +53,8 @@ add_executable(DAWCoreEngineDemo main.cpp
         src/commands/CommandQueue.h
 )
 
-target_include_directories(DAWCoreEngine PRIVATE ${PULSE_INCLUDE_DIRS})
-target_link_libraries(DAWCoreEngine PRIVATE ${PULSE_LIBRARIES})
+target_include_directories(DAWCoreEngine PRIVATE ${PULSE_INCLUDE_DIRS} ${SNDFILE_INCLUDE_DIRS})
+target_link_libraries(DAWCoreEngine PRIVATE ${PULSE_LIBRARIES} ${SNDFILE_LIBRARIES})
 
-target_include_directories(DAWCoreEngineDemo PRIVATE ${PULSE_INCLUDE_DIRS})
-target_link_libraries(DAWCoreEngineDemo PRIVATE ${PULSE_LIBRARIES})
+target_include_directories(DAWCoreEngineDemo PRIVATE ${PULSE_INCLUDE_DIRS} ${SNDFILE_INCLUDE_DIRS})
+target_link_libraries(DAWCoreEngineDemo PRIVATE ${PULSE_LIBRARIES} ${SNDFILE_LIBRARIES})

@@ -8,11 +8,12 @@
 
 namespace coreengine {
     enum class SampleRate {
-        CD = 44100,
-        VIDEO = 48000,
-        HIGHRES = 192000,
+        CD       = 44100,
+        VIDEO    = 48000,
+        HIGHRES  = 192000,
+        STUDIO   = 196000,
         LOSSLESS = 0,
-        DEV = 22000, // easy on the cpu
+        DEV      = 22000,
     };
 
     enum class DspFormat {

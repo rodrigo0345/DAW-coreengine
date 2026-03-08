@@ -4,11 +4,17 @@ import { create } from 'zustand';
 export interface Track {
   id: number;
   name: string;
-  synthType: number;
+  synthType: number;  // 0=Sine 1=Square 2=Saw 3=PWM 4=Sampler
   volume: number;
   muted: boolean;
   solo: boolean;
   color: string;
+  // Sampler fields
+  sampleFile?: string;   // absolute path to loaded audio file
+  rootNote?: number;     // MIDI root note (default 69 = A4)
+  oneShot?: boolean;     // true = drum/one-shot
+  // Polyphony
+  voiceCount?: number;   // number of voices (default 8)
 }
 export interface Note {
   id: string;
@@ -130,6 +136,10 @@ interface AppState {
   addAutomationPoint: (laneId: string, point: AutomationPoint) => void;
   updateAutomationPoint: (laneId: string, pointId: string, beat: number, value: number) => void;
   removeAutomationPoint: (laneId: string, pointId: string) => void;
+  // ── Sampler / instrument ─────────────────────────────────────────────────
+  setSampleFile: (trackId: number, filePath: string, rootNote: number, oneShot: boolean) => void;
+  setTrackVoiceCount: (trackId: number, numVoices: number) => void;
+  setSynthTypeOnTrack: (trackId: number, synthType: number) => void;
 }
 export const uid = () => Math.random().toString(36).slice(2, 11);
 function snap(s: AppState): Snapshot {
@@ -146,7 +156,7 @@ export const useStore = create<AppState>((set, get) => ({
   isPlaying: false,
   currentPosition: 0,
   bpm: 120,
-  sampleRate: 44100,
+  sampleRate: 196000,
   tracks: [],
   notes: [],
   patterns: [{ id: 'pat-1', name: 'Pattern 1', duration: 16, notes: [] }],
@@ -460,4 +470,28 @@ export const useStore = create<AppState>((set, get) => ({
       ),
     }));
   },
+
+  // ── Sampler / instrument ───────────────────────────────────────────────────
+  setSampleFile: (trackId, filePath, rootNote, oneShot) =>
+    set(s => ({
+      tracks: s.tracks.map(t =>
+        t.id === trackId ? { ...t, synthType: 4, sampleFile: filePath, rootNote, oneShot } : t
+      ),
+    })),
+
+  setTrackVoiceCount: (trackId, numVoices) =>
+    set(s => ({
+      tracks: s.tracks.map(t =>
+        t.id === trackId ? { ...t, voiceCount: Math.max(1, numVoices) } : t
+      ),
+    })),
+
+  setSynthTypeOnTrack: (trackId, synthType) =>
+    set(s => ({
+      tracks: s.tracks.map(t =>
+        t.id === trackId
+          ? { ...t, synthType, sampleFile: synthType !== 4 ? undefined : t.sampleFile }
+          : t
+      ),
+    })),
 }));

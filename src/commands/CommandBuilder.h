@@ -194,6 +194,22 @@ namespace coreengine {
                 NoteData{midiNote, 0.0f, instrument}));
         }
 
+        bool loadSample(int trackId, const std::string& filePath,
+                        int rootNote = 69, bool oneShot = true) {
+            return commandQueue.push(Command(CommandType::LoadSample,
+                LoadSampleData{trackId, filePath, rootNote, oneShot}));
+        }
+
+        bool setVoiceCount(int trackId, int numVoices) {
+            return commandQueue.push(Command(CommandType::SetVoiceCount,
+                SetVoiceCountData{trackId, numVoices}));
+        }
+
+        bool setSynthType(int trackId, int synthType, int numVoices, double sampleRate) {
+            return commandQueue.push(Command(CommandType::SetSynthType,
+                SetSynthTypeData{trackId, synthType, numVoices, sampleRate}));
+        }
+
     private:
         CommandQueue& commandQueue;
     };

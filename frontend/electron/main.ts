@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 
@@ -156,6 +156,34 @@ ipcMain.handle('track:setAutomationLane', async (_e, data: {
 ipcMain.handle('track:clearAutomationLane', async (_e, data: {
   trackId: number; paramName: string; bpm: number; sampleRate: number;
 }) => sendToEngine({ type: 'ClearAutomationLane', data }));
+
+// ─── IPC: Sampler / instruments ──────────────────────────────────────────────
+
+ipcMain.handle('track:loadSample', async (_e, data: {
+  trackId: number; filePath: string; rootNote: number; oneShot: boolean;
+}) => sendToEngine({ type: 'LoadSample', data }));
+
+ipcMain.handle('track:setVoiceCount', async (_e, data: {
+  trackId: number; numVoices: number;
+}) => sendToEngine({ type: 'SetVoiceCount', data }));
+
+ipcMain.handle('track:setSynthType', async (_e, data: {
+  trackId: number; synthType: number; numVoices: number; sampleRate: number;
+}) => sendToEngine({ type: 'SetSynthType', data }));
+
+// Open a native file picker and return the chosen path (or null)
+ipcMain.handle('dialog:openAudioFile', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Select Audio Sample',
+    filters: [
+      { name: 'Audio Files', extensions: ['wav', 'flac', 'aiff', 'ogg'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+    properties: ['openFile'],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
 
 // ─── IPC: Generic command (for future extensibility) ─────────────────────────
 

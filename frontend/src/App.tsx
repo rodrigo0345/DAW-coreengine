@@ -14,16 +14,16 @@ declare global {
     electronAPI?: {
       // Engine lifecycle
       startEngine: () => Promise<any>;
-      stopEngine: () => Promise<any>;
+      stopEngine:  () => Promise<any>;
       // Track / timeline
-      addTrack: (data: any) => Promise<any>;
-      addNote: (data: any) => Promise<any>;
-      rebuildTimeline: () => Promise<any>;
-      clearTrack: (data: any) => Promise<any>;
+      addTrack:        (data: any) => Promise<any>;
+      addNote:         (data: any) => Promise<any>;
+      rebuildTimeline: ()          => Promise<any>;
+      clearTrack:      (data: any) => Promise<any>;
       // Track controls
       setTrackVolume: (data: any) => Promise<any>;
-      setTrackMute: (data: any) => Promise<any>;
-      setTrackSolo: (data: any) => Promise<any>;
+      setTrackMute:   (data: any) => Promise<any>;
+      setTrackSolo:   (data: any) => Promise<any>;
       // ADSR
       setADSR: (data: any) => Promise<any>;
       // Effects
@@ -33,17 +33,22 @@ declare global {
       // Automation
       setAutomationLane:   (data: any) => Promise<any>;
       clearAutomationLane: (data: any) => Promise<any>;
+      // Sampler / instrument management
+      loadSample:    (data: any)  => Promise<any>;
+      setVoiceCount: (data: any)  => Promise<any>;
+      setSynthType:  (data: any)  => Promise<any>;
+      openAudioFile: ()           => Promise<string | null>;
       // Playback
-      play: () => Promise<any>;
-      stop: () => Promise<any>;
+      play:  () => Promise<any>;
+      stop:  () => Promise<any>;
       pause: () => Promise<any>;
-      seek: (samplePosition: number) => Promise<any>;
+      seek:  (samplePosition: number) => Promise<any>;
       // Generic
       sendCommand: (cmd: string) => Promise<any>;
       // Events
-      onEngineOutput: (callback: (data: string) => void) => void;
-      onEngineError: (callback: (data: string) => void) => void;
-      onEngineClosed: (callback: (code: number) => void) => void;
+      onEngineOutput:  (callback: (data: string) => void) => void;
+      onEngineError:   (callback: (data: string) => void) => void;
+      onEngineClosed:  (callback: (code: number) => void) => void;
     };
   }
 }

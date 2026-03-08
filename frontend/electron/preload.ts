@@ -29,6 +29,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setAutomationLane:   (data: any) => ipcRenderer.invoke('track:setAutomationLane', data),
   clearAutomationLane: (data: any) => ipcRenderer.invoke('track:clearAutomationLane', data),
 
+  // Sampler / instrument management
+  loadSample:       (data: any) => ipcRenderer.invoke('track:loadSample', data),
+  setVoiceCount:    (data: any) => ipcRenderer.invoke('track:setVoiceCount', data),
+  setSynthType:     (data: any) => ipcRenderer.invoke('track:setSynthType', data),
+  openAudioFile:    ()           => ipcRenderer.invoke('dialog:openAudioFile'),
+
   // Playback
   play: () => ipcRenderer.invoke('playback:play'),
   stop: () => ipcRenderer.invoke('playback:stop'),
