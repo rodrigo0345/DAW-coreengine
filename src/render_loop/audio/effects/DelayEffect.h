@@ -56,38 +56,34 @@ public:
         writePos_ = 0;
     }
 
-    void process(std::shared_ptr<AudioBuffer> buffer) override {
-        if (!enabled_ || !buffer || mix_ == 0.f || bufL_.empty()) return;
+    void process(AudioBuffer& buffer) override {
+        if (!enabled_ || mix_ == 0.f || bufL_.empty()) return;
 
-        const size_t n   = buffer->numSamples;
-        const size_t ch  = buffer->channels.size();
+        const size_t n   = buffer.numSamples;
+        const size_t ch  = buffer.channels.size();
         if (ch == 0) return;
 
         const size_t bufSize = bufL_.size();
 
         for (size_t s = 0; s < n; ++s) {
-            float inL = buffer->channels[0][s];
-            float inR = (ch > 1) ? buffer->channels[1][s] : inL;
+            float inL = buffer.channels[0][s];
+            float inR = (ch > 1) ? buffer.channels[1][s] : inL;
 
-            // Read delay
             float delayedL = bufL_[writePos_];
             float delayedR = bufR_[writePos_];
 
-            // 1-pole LP filter for damping (simulate tape saturation)
             filterL_ = filterL_ * damping_ + delayedL * (1.f - damping_);
             filterR_ = filterR_ * damping_ + delayedR * (1.f - damping_);
 
-            // Write: input + feedback * filtered output
             bufL_[writePos_] = inL + filterL_ * feedback_;
             bufR_[writePos_] = inR + filterR_ * feedback_;
 
             if (++writePos_ >= bufSize) writePos_ = 0;
 
-            // Mix
-            float dry = 1.f - mix_;
-            buffer->channels[0][s] = inL * dry + delayedL * mix_;
+            const float dry = 1.f - mix_;
+            buffer.channels[0][s] = inL * dry + delayedL * mix_;
             if (ch > 1)
-                buffer->channels[1][s] = inR * dry + delayedR * mix_;
+                buffer.channels[1][s] = inR * dry + delayedR * mix_;
         }
     }
 

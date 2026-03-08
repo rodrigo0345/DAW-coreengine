@@ -5,171 +5,110 @@
 #ifndef DAWCOREENGINE_VOICE_H
 #define DAWCOREENGINE_VOICE_H
 
+#include <array>
 #include <memory>
-#include <vector>
 #include "AudioBlock.h"
+#include "AudioBuffer.h"
 #include "Oscillator.h"
 #include "ADSR.h"
 #include "EffectChain.h"
 #include "../../configs/EngineConfig.h"
 
 namespace coreengine {
-    /**
-     * Represents a single voice in a synthesizer.
-     * Each voice can play one note at a time using a specific oscillator,
-     * with professional ADSR envelope shaping and optional effects chain.
-     */
-    class Voice: public coreengine::AudioBlock {
-    public:
-        explicit Voice(std::unique_ptr<Oscillator> osc, const double sampleRate = static_cast<double>(SampleRate::STUDIO))
-        : frequency_(0.0f)
-            , phase_(0.0f)
-            , amplitude_(0.0f)
-            , sampleRate_(sampleRate)
-            , oscillator(std::move(osc))
-            , adsr_(sampleRate)
-            , effectChain_()
-            , scratchBuf_()
-        {
-            isActive = false;
-            midiNote = -1;
-        }
 
-        bool isActive;
-        int midiNote;
+class Voice : public AudioBlock {
+public:
+    explicit Voice(std::unique_ptr<Oscillator> osc,
+                   double sampleRate = static_cast<double>(SampleRate::STUDIO))
+        : frequency_(0.f), phase_(0.f), amplitude_(0.f)
+        , sampleRate_(sampleRate)
+        , oscillator(std::move(osc))
+        , adsr_(sampleRate)
+    {
+        isActive = false;
+        midiNote = -1;
+        // Pre-wire monoScratch once — never re-allocated on hot path
+        monoScratch_.sampleRate = static_cast<uint64_t>(sampleRate);
+        monoScratch_.numSamples = MAX_BLOCK_SIZE;
+        monoScratch_.channels.resize(1);
+        monoScratch_.channels[0] = scratch_.data();
+    }
 
-        /**
-         * Start playing a note
-         * @param freq Frequency in Hz
-         * @param amp Amplitude (0.0 to 1.0)
-         */
-        void start(const float freq, const float amp) {
-            frequency_ = freq;
-            amplitude_ = amp;
-            phase_ = 0.0f;
-            isActive = true;
+    bool isActive;
+    int  midiNote;
 
-            if (oscillator) {
-                oscillator->reset();
-            }
+    void start(float freq, float amp) {
+        frequency_ = freq;
+        amplitude_ = amp;
+        phase_     = 0.f;
+        isActive   = true;
+        if (oscillator) oscillator->reset();
+        adsr_.trigger();
+        effectChain_.reset();
+    }
 
-            adsr_.trigger();
-            effectChain_.reset();
-        }
+    void stop() { adsr_.release(); }
 
-        /**
-         * Stop playing (trigger release)
-         */
-        void stop() {
-            adsr_.release();
-        }
+    // ── Zero-alloc processBlock ───────────────────────────────────────────
+    void processBlock(AudioBuffer& buffer) override {
+        if (!isActive || !oscillator) return;
 
-        /**
-         * Process audio block with ADSR envelope and effects.
-         * Uses a private scratch buffer so the envelope and effects
-         * don't corrupt samples already accumulated from other voices.
-         */
-        void processBlock(std::shared_ptr<AudioBuffer> buffer) override {
-            if (!isActive || !oscillator || !buffer) return;
+        const size_t numSamples  = buffer.numSamples;
+        const size_t numChannels = buffer.channels.size();
 
-            const auto numSamples = buffer->numSamples;
-            const auto numChannels = buffer->channels.size();
+        std::fill_n(scratch_.data(), numSamples, 0.f);
 
-            // Allocate/reuse a scratch buffer (one channel is enough, we mono-generate)
-            if (scratchBuf_.size() < numSamples)
-                scratchBuf_.resize(numSamples, 0.0f);
+        // Update only the fields that change per block — no allocation
+        monoScratch_.sampleRate = buffer.sampleRate;
+        monoScratch_.numSamples = numSamples;
 
-            // Clear scratch
-            std::fill_n(scratchBuf_.data(), numSamples, 0.0f);
+        oscillator->generate(monoScratch_, frequency_, amplitude_, phase_);
 
-            // Wrap scratch in a temporary AudioBuffer for the oscillator
-            auto tmpBuf = std::make_shared<AudioBuffer>();
-            tmpBuf->sampleRate = buffer->sampleRate;
-            tmpBuf->numSamples = numSamples;
-            tmpBuf->channels.resize(1);
-            tmpBuf->channels[0] = scratchBuf_.data();
-
-            // Generate raw oscillator audio into scratch
-            oscillator->generate(tmpBuf, frequency_, amplitude_, phase_);
-
-            // Apply ADSR envelope per-sample and accumulate into the real buffer
-            for (size_t s = 0; s < numSamples; ++s) {
-                const float env = adsr_.process();
-                const float sample = scratchBuf_[s] * env;
-
-                for (size_t ch = 0; ch < numChannels; ++ch) {
-                    buffer->channels[ch][s] += sample;
-                }
-
-                if (!adsr_.isActive()) {
-                    isActive = false;
-                    break;  // remaining samples stay 0 – nothing to add
-                }
-            }
-
-            // Process through effect chain (operates on the main buffer)
-            if (!effectChain_.isEmpty()) {
-                effectChain_.process(buffer);
+        for (size_t s = 0; s < numSamples; ++s) {
+            const float env = adsr_.process();
+            const float sample = scratch_[s] * env;
+            for (size_t ch = 0; ch < numChannels; ++ch)
+                buffer.channels[ch][s] += sample;
+            if (!adsr_.isActive()) {
+                isActive = false;
+                break;
             }
         }
 
-        void releaseResources() override {
-            effectChain_.clear();
-        }
+        if (!effectChain_.isEmpty())
+            effectChain_.process(buffer);
+    }
 
-        /**
-         * Set ADSR parameters
-         */
-        void setADSRParameters(const ADSR::Parameters& params) {
-            adsr_.setParameters(params);
-        }
+    void releaseResources() override { effectChain_.clear(); }
 
-        /**
-         * Get ADSR parameters
-         */
-        [[nodiscard]] const ADSR::Parameters& getADSRParameters() const {
-            return adsr_.getParameters();
-        }
+    void setADSRParameters(const ADSR::Parameters& params) { adsr_.setParameters(params); }
+    [[nodiscard]] const ADSR::Parameters& getADSRParameters() const { return adsr_.getParameters(); }
+    [[nodiscard]] ADSR& getADSR() { return adsr_; }
+    [[nodiscard]] EffectChain& getEffectChain() { return effectChain_; }
+    void setSampleRate(double sr) { sampleRate_ = sr; adsr_.setSampleRate(sr); }
+    [[nodiscard]] bool isReleasing() const { return adsr_.isReleasing(); }
 
-        /**
-         * Get reference to ADSR envelope
-         */
-        [[nodiscard]] ADSR& getADSR() {
-            return adsr_;
-        }
+    // Pre-allocate the mono scratch channel vector once (called after construction)
+    void preallocate() {
+        // nothing more needed — scratch_ is a std::array, already allocated
+    }
 
-        /**
-         * Get reference to effect chain
-         */
-        [[nodiscard]] EffectChain& getEffectChain() {
-            return effectChain_;
-        }
+private:
+    float  frequency_, phase_, amplitude_;
+    double sampleRate_;
 
-        /**
-         * Update sample rate
-         */
-        void setSampleRate(double sampleRate) {
-            sampleRate_ = sampleRate;
-            adsr_.setSampleRate(sampleRate);
-        }
+    std::unique_ptr<Oscillator>                    oscillator;
+    ADSR                                           adsr_;
+    EffectChain                                    effectChain_;
 
-        /**
-         * Check if voice is in release phase
-         */
-        [[nodiscard]] bool isReleasing() const {
-            return adsr_.isReleasing();
-        }
+    // Fixed-size scratch + pre-wired mono AudioBuffer — zero heap per block
+    std::array<float, MAX_BLOCK_SIZE> scratch_{};
+    AudioBuffer                       monoScratch_;   // channels[0] → scratch_.data(), set in ctor
+};
 
-    private:
-        float frequency_;
-        float phase_;
-        float amplitude_;
-        double sampleRate_;
-
-        std::unique_ptr<Oscillator> oscillator;
-        ADSR adsr_;
-        EffectChain effectChain_;
-        std::vector<float> scratchBuf_;   // per-voice scratch to avoid corrupting shared buffer
-    };
-}
+} // namespace coreengine
 #endif //DAWCOREENGINE_VOICE_H
+
+
+
+

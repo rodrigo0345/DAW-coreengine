@@ -20,7 +20,7 @@ namespace coreengine {
  */
 class SineOscillator: public coreengine::Oscillator {
 public:
-    void generate(std::shared_ptr<AudioBuffer> buffer,
+    void generate(AudioBuffer& buffer,
                  float frequency,
                  float amplitude,
                  float& phase) override;

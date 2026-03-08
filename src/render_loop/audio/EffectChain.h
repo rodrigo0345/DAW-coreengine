@@ -99,9 +99,7 @@ namespace coreengine {
         /**
          * Process buffer through all effects in chain
          */
-        void process(std::shared_ptr<AudioBuffer> buffer) {
-            if (!buffer) return;
-
+        void process(AudioBuffer& buffer) {
             for (auto& effect : effects_) {
                 if (effect && effect->isEnabled()) {
                     effect->process(buffer);

@@ -3,6 +3,7 @@
 //
 
 #include "CoreServiceEngine.h"
+#include "render_loop/audio/AudioBuffer.h"
 #include <pulse/error.h>
 #include <iostream>
 
@@ -43,21 +44,22 @@ void coreengine::CoreServiceEngine::stop() {
 
 void coreengine::CoreServiceEngine::audioThreadLoop() {
     int error;
-    const size_t numSamples = config.sampleBlockSize;
-    const auto buffer = renderLoop.getBuffer();
+    const size_t numSamples  = config.sampleBlockSize;
+    AudioBuffer& buffer      = renderLoop.getBuffer();   // reference — no copy, no heap
 
     while (isRunning) {
         renderLoop.processNextBlock();
 
+        const size_t nch = buffer.channels.size();
         for (size_t i = 0; i < numSamples; ++i) {
-            for (size_t ch = 0; ch < buffer->channels.size(); ++ch) {
-                interleavingBuffer[i * buffer->channels.size() + ch] = buffer->channels[ch][i];
+            for (size_t ch = 0; ch < nch; ++ch) {
+                interleavingBuffer[i * nch + ch] = buffer.channels[ch][i];
             }
         }
 
         if (pa_simple_write(pulseHandle, interleavingBuffer.data(),
                            interleavingBuffer.size() * sizeof(float), &error) < 0) {
             isRunning = false;
-                           }
+        }
     }
 }

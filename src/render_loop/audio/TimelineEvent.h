@@ -29,18 +29,23 @@ namespace coreengine {
         uint64_t samplePosition;  // When to trigger this event
         EventType type;
 
-        // Event-specific data
-        Instrument* instrument = nullptr;  // Target instrument
+        // NOTE: instrument pointer intentionally removed from note events.
+        // It was a dangling-pointer time-bomb: sortedEvents holds a flat copy
+        // of all events; when replaceInstrument() destroys the old Instrument
+        // on the audio thread (between processCommands and processEventsForBlock
+        // inside the same processNextBlock call), the cached raw pointer in
+        // sortedEvents became invalid. We now resolve the live instrument at
+        // trigger time via trackId.
+        int trackId  = -1;   // used by ALL events to look up the live instrument
         int midiNote = -1;
         float velocity = 0.0f;
-        int trackId = -1;
 
-        // Constructor for note events
-        TimelineEvent(uint64_t pos, EventType t, Instrument* inst, int note, float vel)
-            : samplePosition(pos), type(t), instrument(inst), midiNote(note), velocity(vel) {}
+        // Constructor for note events (trackId mandatory, no instrument ptr)
+        TimelineEvent(uint64_t pos, EventType t, int track, int note, float vel)
+            : samplePosition(pos), type(t), trackId(track), midiNote(note), velocity(vel) {}
 
-        // Constructor for other events
-        TimelineEvent(uint64_t pos, EventType t, int track = -1)
+        // Constructor for non-note events
+        explicit TimelineEvent(uint64_t pos, EventType t, int track = -1)
             : samplePosition(pos), type(t), trackId(track) {}
 
         // For sorting events by time

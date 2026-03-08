@@ -37,9 +37,9 @@ namespace coreengine {
             , sampleRate_(sampleRate)
             , adsrParameters_(adsrParams)
         {
-            voices.reserve(numVoices);
+            voices_.reserve(numVoices);
             for (int i = 0; i < numVoices; ++i) {
-                voices.push_back(VoiceFactory::createVoice(
+                voices_.push_back(VoiceFactory::createVoice(
                     oscillatorCreator_,
                     sampleRate_,
                     adsrParameters_
@@ -60,123 +60,62 @@ namespace coreengine {
                 sampleRate) {}
 
         void noteOn(int midiNote, float velocity) override {
-            // 1. Convert MIDI note to Frequency: f = 440 * 2^((n-69)/12)
             const float freq = 440.0f * std::pow(2.0f, (static_cast<float>(midiNote) - 69.0f) / 12.0f);
-            const float amp = velocity / 127.0f * 0.2f; // Scale volume and keep it low
-
-            // 2. Find an idle voice
-            for (const auto& voice : voices) {
-                if (!voice->isActive) {
-                    voice->midiNote = midiNote;
-                    voice->start(freq, amp);
-                    return;
-                }
+            const float amp  = velocity / 127.0f * 0.2f;
+            for (const auto& voice : voices_) {
+                if (!voice->isActive) { voice->midiNote = midiNote; voice->start(freq, amp); return; }
             }
-
-            // 3. Voice stealing: steal the oldest releasing voice, or the first voice
             Voice* stealVoice = nullptr;
-            for (const auto& voice : voices) {
-                if (voice->isReleasing()) {
-                    stealVoice = voice.get();
-                    break;
-                }
-            }
-
-            // If no releasing voice, steal the first one
-            if (!stealVoice && !voices.empty()) {
-                stealVoice = voices[0].get();
-            }
-
-            if (stealVoice) {
-                stealVoice->midiNote = midiNote;
-                stealVoice->start(freq, amp);
-            }
+            for (const auto& voice : voices_)
+                if (voice->isReleasing()) { stealVoice = voice.get(); break; }
+            if (!stealVoice && !voices_.empty()) stealVoice = voices_[0].get();
+            if (stealVoice) { stealVoice->midiNote = midiNote; stealVoice->start(freq, amp); }
         }
 
         void noteOff(int midiNote) override {
-            for (const auto& voice : voices) {
-                if (voice->isActive && voice->midiNote == midiNote) {
-                    voice->stop();
-                }
-            }
+            for (const auto& voice : voices_)
+                if (voice->isActive && voice->midiNote == midiNote) voice->stop();
         }
 
         void allNotesOff() override {
-            for (const auto& voice : voices) {
-                if (voice->isActive) {
-                    voice->stop();
-                }
-            }
+            for (const auto& voice : voices_) if (voice->isActive) voice->stop();
         }
 
-        void processBlock(std::shared_ptr<AudioBuffer> buffer) override {
-            for (const auto& voice : voices) {
-                voice->processBlock(buffer);
-            }
+        void processBlock(AudioBuffer& buffer) override {
+            for (const auto& voice : voices_) voice->processBlock(buffer);
         }
 
         void releaseResources() override {
-            for (const auto& voice : voices) {
-                voice->releaseResources();
-            }
+            for (const auto& voice : voices_) voice->releaseResources();
         }
 
-        /**
-         * Set ADSR parameters for all voices
-         */
         void setADSRParameters(const ADSR::Parameters& params) {
             adsrParameters_ = params;
-            for (const auto& voice : voices) {
-                voice->setADSRParameters(params);
-            }
+            for (const auto& voice : voices_) voice->setADSRParameters(params);
         }
+        [[nodiscard]] const ADSR::Parameters& getADSRParameters() const { return adsrParameters_; }
 
-        /**
-         * Get current ADSR parameters
-         */
-        [[nodiscard]] const ADSR::Parameters& getADSRParameters() const {
-            return adsrParameters_;
-        }
-
-        /**
-         * Get a specific voice for fine-tuning
-         */
         [[nodiscard]] Voice* getVoice(size_t index) {
-            return (index < voices.size()) ? voices[index].get() : nullptr;
+            return (index < voices_.size()) ? voices_[index].get() : nullptr;
+        }
+        [[nodiscard]] size_t getVoiceCount() const { return voices_.size(); }
+
+        void setSampleRate(double sr) {
+            sampleRate_ = sr;
+            for (const auto& voice : voices_) voice->setSampleRate(sr);
         }
 
-        /**
-         * Get number of voices
-         */
-        [[nodiscard]] size_t getVoiceCount() const {
-            return voices.size();
-        }
-
-        /**
-         * Update sample rate for all voices
-         */
-        void setSampleRate(double sampleRate) {
-            sampleRate_ = sampleRate;
-            for (const auto& voice : voices) {
-                voice->setSampleRate(sampleRate);
-            }
-        }
-
-        /**
-         * Set number of polyphonic voices at runtime (voices are rebuilt)
-         */
         void setVoiceCount(int numVoices) {
             numVoices = std::max(1, numVoices);
-            for (const auto& v : voices) v->stop();
-            voices.clear();
-            voices.reserve(numVoices);
-            for (int i = 0; i < numVoices; ++i) {
-                voices.push_back(VoiceFactory::createVoice(oscillatorCreator_, sampleRate_, adsrParameters_));
-            }
+            for (const auto& v : voices_) v->stop();
+            voices_.clear();
+            voices_.reserve(static_cast<size_t>(numVoices));
+            for (int i = 0; i < numVoices; ++i)
+                voices_.push_back(VoiceFactory::createVoice(oscillatorCreator_, sampleRate_, adsrParameters_));
         }
 
     private:
-        std::vector<std::unique_ptr<Voice>> voices;
+        std::vector<std::unique_ptr<Voice>> voices_;
         VoiceFactory::OscillatorCreator oscillatorCreator_;
         double sampleRate_;
         ADSR::Parameters adsrParameters_;

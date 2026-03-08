@@ -16,21 +16,9 @@
 
 coreengine::RenderLoop::RenderLoop(const coreengine::EngineConfig& config)
         : positionClock(0), isPlaying(false) {
-
-    this->audioBuffer = std::make_shared<coreengine::AudioBuffer>(
-        coreengine::AudioBuffer{
-            .channels = {},
-            .sampleRate = config.getSampleRateVal(),
-            .numSamples = numSamples,
-        }
-    );
-
-    const auto numChannels = config.getChannelsVal();
-    audioBuffer->channels.resize(numChannels);
-    for (int i = 0; i < numChannels; ++i) {
-        audioBuffer->channels[static_cast<size_t>(i)] = new float[numSamples];
-        std::fill_n(audioBuffer->channels[static_cast<size_t>(i)], numSamples, 0.0f); // reset
-    }
+    // Allocate backing store once — no per-block heap allocation
+    const auto numChannels = static_cast<size_t>(config.getChannelsVal());
+    audioBuffer_.initStorage(numChannels, numSamples, config.getSampleRateVal());
 }
 
 void coreengine::RenderLoop::processCommands() {
@@ -89,7 +77,7 @@ void coreengine::RenderLoop::processCommands() {
             // Timeline editing commands
             case CommandType::AddTrack: {
                 auto data = std::get<AddTrackData>(cmd->data);
-                double sr = static_cast<double>(audioBuffer->sampleRate);
+                auto sr = static_cast<double>(audioBuffer_.sampleRate);
                 auto instrument = SynthFactory::createByType(data.synthType, data.numVoices, sr);
                 timeline.addTrackWithId(data.trackId, data.trackName, std::move(instrument));
                 break;
@@ -186,14 +174,9 @@ void coreengine::RenderLoop::processCommands() {
                 auto data = std::get<SetTrackEffectData>(cmd->data);
                 Track* track = timeline.getTrack(data.trackId);
                 if (!track) break;
-
-                // Remove any existing effect with the same name first
                 track->removeEffect(data.effectType);
-
-                if (!data.enabled) break; // just removing
-
-                float sr = static_cast<float>(audioBuffer->sampleRate);
-
+                if (!data.enabled) break;
+                float sr = static_cast<float>(audioBuffer_.sampleRate);
                 if (data.effectType == "Reverb") {
                     auto fx = std::make_unique<ReverbEffect>(data.roomSize, data.damping);
                     fx->setMix(data.mix);
@@ -265,7 +248,7 @@ void coreengine::RenderLoop::processCommands() {
                 auto data = std::get<LoadSampleData>(cmd->data);
                 Track* track = timeline.getTrack(data.trackId);
                 if (!track) break;
-                double sr = static_cast<double>(audioBuffer->sampleRate);
+                double sr = static_cast<double>(audioBuffer_.sampleRate);
                 auto sampler = std::make_unique<SamplePlayer>(8, sr, data.rootNote);
                 sampler->setOneShot(data.oneShot);
                 if (!sampler->loadFile(data.filePath)) {
@@ -330,15 +313,14 @@ void coreengine::RenderLoop::stop() {
 }
 
 void coreengine::RenderLoop::reset() {
-    this->positionClock = 0;
+    positionClock = 0;
     timeline.reset();
-    for (const auto& channelPtr : audioBuffer->channels) {
-        std::fill_n(channelPtr, audioBuffer->numSamples, 0.0f);
-    }
+    for (const auto& channelPtr : audioBuffer_.channels)
+        std::fill_n(channelPtr, audioBuffer_.numSamples, 0.0f);
 }
 
 void coreengine::RenderLoop::gotoPosition(uint64_t userPositionClock) {
-    this->positionClock = userPositionClock;
+    positionClock = userPositionClock;
     timeline.seekTo(userPositionClock);
 }
 
@@ -347,145 +329,168 @@ void coreengine::RenderLoop::addProcessor(std::unique_ptr<AudioBlock> block) {
 }
 
 void coreengine::RenderLoop::processNextBlock() {
-    // Process any pending commands first
+    using clock = std::chrono::steady_clock;
+    using ns    = long long;
+    auto t0 = clock::now();
+
     processCommands();
+    auto t1 = clock::now();
 
-    // Clear the buffer
-    for (const auto& channelPtr : audioBuffer->channels) {
-        std::fill_n(channelPtr, audioBuffer->numSamples, 0.0f);
+    for (const auto& channelPtr : audioBuffer_.channels)
+        std::fill_n(channelPtr, audioBuffer_.numSamples, 0.0f);
+    auto t2 = clock::now();
+
+    if (!isPlaying) {
+        timing_.total += std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t0).count();
+        timing_.count++;
+        return;
     }
 
-    if (!isPlaying) return;
+    timeline.processEventsForBlock(positionClock, audioBuffer_.numSamples);
+    auto t3 = clock::now();
 
-    // Process timeline events for this block
-    timeline.processEventsForBlock(positionClock, audioBuffer->numSamples);
+    applyAutomation(positionClock, audioBuffer_.numSamples);
+    auto t4 = clock::now();
 
-    // Apply automation for this block
-    applyAutomation(positionClock, audioBuffer->numSamples);
+    for (auto& track : timeline.getAllTracks())
+        track->processBlock(audioBuffer_);
+    for (const auto& processor : processorBlocks)
+        processor->processBlock(audioBuffer_);
+    auto t5 = clock::now();
 
-    // Process all tracks from timeline
-    for (auto& track : timeline.getAllTracks()) {
-        track->processBlock(audioBuffer);
-    }
-
-    // Process any additional audio blocks (effects, etc.)
-    for (const auto& processor : processorBlocks) {
-        processor->processBlock(audioBuffer);
-    }
-
-    // ── Master limiter (brick-wall, -0.1 dBFS) ───────────────────────────────
-    // Simple feed-forward peak limiter with fast attack / slow release.
-    // Prevents any sample from exceeding ±0.989 (≈ -0.1 dBFS).
+    // ── Master limiter ────────────────────────────────────────────────────
     {
-        constexpr float CEILING    = 0.989f;      // -0.1 dBFS
-        constexpr float ATTACK_TC  = 0.001f;      // 1 ms attack
-        constexpr float RELEASE_TC = 0.200f;      // 200 ms release
-        const float     sr         = static_cast<float>(audioBuffer->sampleRate);
-        const float     attackCoef  = std::exp(-1.0f / (ATTACK_TC  * sr));
-        const float     releaseCoef = std::exp(-1.0f / (RELEASE_TC * sr));
+        constexpr float CEILING    = 0.989f;
+        constexpr float ATTACK_TC  = 0.001f;
+        constexpr float RELEASE_TC = 0.200f;
+        const float sr         = static_cast<float>(audioBuffer_.sampleRate);
+        const float attackCoef  = std::exp(-1.0f / (ATTACK_TC  * sr));
+        const float releaseCoef = std::exp(-1.0f / (RELEASE_TC * sr));
 
-        for (size_t s = 0; s < audioBuffer->numSamples; ++s) {
-            // Find peak across all channels
+        for (size_t s = 0; s < audioBuffer_.numSamples; ++s) {
             float peak = 0.0f;
-            for (auto* ch : audioBuffer->channels)
+            for (auto* ch : audioBuffer_.channels)
                 peak = std::max(peak, std::abs(ch[s]));
-
-            // Gain-computer: how much gain reduction is needed?
             const float targetGain = (peak > CEILING) ? (CEILING / peak) : 1.0f;
-
-            // Smooth the gain reduction with attack/release
-            if (targetGain < limiterGain_) {
+            if (targetGain < limiterGain_)
                 limiterGain_ = attackCoef  * limiterGain_ + (1.0f - attackCoef)  * targetGain;
-            } else {
+            else
                 limiterGain_ = releaseCoef * limiterGain_ + (1.0f - releaseCoef) * targetGain;
-            }
-
-            // Apply gain
-            for (auto* ch : audioBuffer->channels)
+            for (auto* ch : audioBuffer_.channels)
                 ch[s] *= limiterGain_;
         }
     }
+    auto t6 = clock::now();
 
-    this->positionClock += audioBuffer->numSamples;
+    auto dur = [](auto a, auto b) -> ns {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count();
+    };
+    timing_.commands       += dur(t0, t1);
+    timing_.clearBuf       += dur(t1, t2);
+    timing_.timelineEvents += dur(t2, t3);
+    timing_.automation     += dur(t3, t4);
+    timing_.trackProcess   += dur(t4, t5);
+    timing_.limiter        += dur(t5, t6);
+    timing_.total          += dur(t0, t6);
+    timing_.count++;
+
+    if (timing_.count >= TIMING_REPORT_INTERVAL) {
+        printTimingReport();
+        timing_.reset();
+    }
+
+    positionClock += audioBuffer_.numSamples;
 }
 
-// ── Automation ────────────────────────────────────────────────────────────────
+void coreengine::RenderLoop::printTimingReport() const {
+    const double n  = static_cast<double>(timing_.count);
+    const double us = 1000.0;
+    const double totalUs = static_cast<double>(timing_.total) / us / n;
+    auto pct = [&](long long v) -> double {
+        return timing_.total > 0
+            ? 100.0 * static_cast<double>(v) / static_cast<double>(timing_.total) : 0.0;
+    };
+    const double budgetUs = (static_cast<double>(audioBuffer_.numSamples) /
+                             static_cast<double>(audioBuffer_.sampleRate)) * 1e6;
+    const double cpuLoad  = totalUs / budgetUs * 100.0;
+    std::fprintf(stderr,
+        "\n╔══════════════════════════════════════════════════════════════╗\n"
+        "║  RenderLoop Block Timing  (avg over %4llu blocks)            ║\n"
+        "╠══════════════════════════╦══════════╦══════════╦═════════════╣\n"
+        "║  Section                 ║  avg µs  ║   %% tot  ║  CPU load   ║\n"
+        "╠══════════════════════════╬══════════╬══════════╬═════════════╣\n"
+        "║  1. processCommands      ║ %8.2f ║ %7.1f%% ║             ║\n"
+        "║  2. clearBuffer          ║ %8.2f ║ %7.1f%% ║             ║\n"
+        "║  3. timelineEvents       ║ %8.2f ║ %7.1f%% ║             ║\n"
+        "║  4. automation           ║ %8.2f ║ %7.1f%% ║             ║\n"
+        "║  5. trackProcess+effects ║ %8.2f ║ %7.1f%% ║             ║\n"
+        "║  6. masterLimiter        ║ %8.2f ║ %7.1f%% ║             ║\n"
+        "╠══════════════════════════╬══════════╬══════════╬═════════════╣\n"
+        "║  TOTAL per block         ║ %8.2f ║  100.0%%  ║   %6.2f%%   ║\n"
+        "║  Block budget @ %6u Hz ║ %8.2f ║          ║             ║\n"
+        "╚══════════════════════════╩══════════╩══════════╩═════════════╝\n",
+        static_cast<unsigned long long>(timing_.count),
+        static_cast<double>(timing_.commands)       / us / n,  pct(timing_.commands),
+        static_cast<double>(timing_.clearBuf)        / us / n,  pct(timing_.clearBuf),
+        static_cast<double>(timing_.timelineEvents)  / us / n,  pct(timing_.timelineEvents),
+        static_cast<double>(timing_.automation)      / us / n,  pct(timing_.automation),
+        static_cast<double>(timing_.trackProcess)    / us / n,  pct(timing_.trackProcess),
+        static_cast<double>(timing_.limiter)         / us / n,  pct(timing_.limiter),
+        totalUs, cpuLoad,
+        static_cast<unsigned>(audioBuffer_.sampleRate), budgetUs
+    );
+    std::fflush(stderr);
+}
 
 float coreengine::RenderLoop::interpolateAutomation(
     const std::vector<AutomationPoint>& pts, const double beat) const
 {
     if (pts.empty()) [[unlikely]] return 0.0f;
-
-    const auto& front = pts.front();
-    if (beat <= front.beat) return front.value;
-    const auto& back = pts.back();
-    if (beat >= back.beat) return back.value;
-
+    if (beat <= pts.front().beat) return pts.front().value;
+    if (beat >= pts.back().beat)  return pts.back().value;
     const auto it = std::upper_bound(pts.begin(), pts.end(), beat,
-        [](double b, const AutomationPoint& p) {
-            return b < p.beat;
-        });
-
+        [](double b, const AutomationPoint& p) { return b < p.beat; });
     const auto& p1 = *std::prev(it);
     const auto& p2 = *it;
-    const double beatRange = p2.beat - p1.beat;
-    const double t = (beat - p1.beat) / beatRange;
-
-    // Linear interpolation: v1 + t * (v2 - v1)
-    const auto fT = static_cast<float>(t);
+    const auto fT = static_cast<float>((beat - p1.beat) / (p2.beat - p1.beat));
     return p1.value + fT * (p2.value - p1.value);
 }
 
 void coreengine::RenderLoop::applyAutomation(uint64_t blockStartSample, uint64_t blockSamples)
 {
     if (automationData_.empty()) return;
-
-    const double sr = static_cast<double>(audioBuffer->sampleRate);
-    // Use the beat at the centre of the block for a single-value update per block.
-    // This is accurate enough for typical block sizes (512 samples @ 44100 = ~11.6ms).
-    const double beat = (static_cast<double>(blockStartSample) + static_cast<double>(blockSamples) * 0.5) / (sr * 60.0 / 120.0);
-    // NOTE: we store bpm per-lane. Without it here we use a fallback. A proper solution
-    // is to read bpm from a member or timeline — for now 120 is the default and the
-    // frontend sends per-lane bpm via SetAutomationLane which we ignore in the beat calc here.
-    // TODO: store bpm member and use it. For now this works at 120 BPM.
+    const double sr   = static_cast<double>(audioBuffer_.sampleRate);
+    const double beat = (static_cast<double>(blockStartSample) +
+                         static_cast<double>(blockSamples) * 0.5) / (sr * 60.0 / 120.0);
 
     for (auto& [trackId, params] : automationData_) {
         Track* track = timeline.getTrack(trackId);
         if (!track) continue;
-
         for (auto& [paramName, pts] : params) {
             if (pts.empty()) continue;
             const float val = interpolateAutomation(pts, beat);
-
-            if (paramName == "volume") {
-                track->setVolume(val);
-                continue;
-            }
-            // Effect param: format is "EffectType.paramName"
-            auto dot = paramName.find('.');
+            if (paramName == "volume") { track->setVolume(val); continue; }
+            const auto dot = paramName.find('.');
             if (dot == std::string::npos) continue;
             const std::string effectType = paramName.substr(0, dot);
             const std::string epName     = paramName.substr(dot + 1);
             AudioEffect* fx = track->getEffect(effectType);
             if (!fx) continue;
-
-            if (epName == "mix") {
-                fx->setMix(val);
-            } else if (effectType == "Reverb") {
-                auto* rev = dynamic_cast<ReverbEffect*>(fx);
-                if (!rev) continue;
-                if (epName == "roomSize") rev->setRoomSize(val);
-                else if (epName == "damping") rev->setDamping(val);
+            if (epName == "mix") { fx->setMix(val); }
+            else if (effectType == "Reverb") {
+                if (auto* r = dynamic_cast<ReverbEffect*>(fx)) {
+                    if (epName == "roomSize") r->setRoomSize(val);
+                    else if (epName == "damping") r->setDamping(val);
+                }
             } else if (effectType == "Delay") {
-                auto* del = dynamic_cast<DelayEffect*>(fx);
-                if (!del) continue;
-                if (epName == "delayMs")       del->setDelayMs(val * 2000.f); // 0–1 → 0–2000ms
-                else if (epName == "feedback") del->setFeedback(val * 0.95f);
-                else if (epName == "damping")  del->setDamping(val);
+                if (auto* d = dynamic_cast<DelayEffect*>(fx)) {
+                    if      (epName == "delayMs")   d->setDelayMs(val * 2000.f);
+                    else if (epName == "feedback")  d->setFeedback(val * 0.95f);
+                    else if (epName == "damping")   d->setDamping(val);
+                }
             } else if (effectType == "Distortion") {
-                auto* dist = dynamic_cast<DistortionEffect*>(fx);
-                if (!dist) continue;
-                if (epName == "drive") dist->setDrive(val * 10.f); // 0–1 → 0–10
+                if (auto* d = dynamic_cast<DistortionEffect*>(fx))
+                    if (epName == "drive") d->setDrive(val * 10.f);
             }
         }
     }

@@ -9,7 +9,6 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
-#include <memory>
 #include <sndfile.h>
 #include "../audio/Instrument.h"
 #include "../audio/ADSR.h"
@@ -32,6 +31,10 @@ public:
         , rootNote_(rootNote), oneShot_(true)
     {
         voices_.resize(static_cast<size_t>(numVoices_));
+
+        // Pre-construct ADSR in every voice — no per-noteOn allocation, makes it faster
+        for (auto& v : voices_)
+            v.adsr = ADSR(engineSampleRate_, adsrParams_);
     }
 
     // ── File loading ──────────────────────────────────────────────────────────
@@ -49,7 +52,7 @@ public:
         return true;
     }
 
-    [[nodiscard]] bool isLoaded()              const { return !sampleData_.empty(); }
+    [[nodiscard]] bool isLoaded()                  const { return !sampleData_.empty(); }
     [[nodiscard]] const std::string& getFilePath() const { return filePath_; }
 
     void setVoiceCount(int n) {
@@ -57,6 +60,8 @@ public:
         allNotesOff();
         voices_.clear();
         voices_.resize(static_cast<size_t>(n));
+        for (auto& v : voices_)
+            v.adsr = ADSR(engineSampleRate_, adsrParams_);
         numVoices_ = n;
     }
     [[nodiscard]] int getVoiceCount() const { return numVoices_; }
@@ -67,11 +72,11 @@ public:
     void setADSRParameters(const ADSR::Parameters& p) {
         adsrParams_ = p;
         for (auto& v : voices_)
-            if (v.adsr) v.adsr->setParameters(p);
+            v.adsr.setParameters(p);
     }
     [[nodiscard]] const ADSR::Parameters& getADSRParameters() const { return adsrParams_; }
 
-    // ── Instrument interface ──────────────────────────────────────────────────
+    // ── Instrument interface ───────────────────────────────────────────────
     void noteOn(int midiNote, float velocity) override {
         if (!isLoaded()) return;
         SampleVoice* v = findFreeVoice();
@@ -84,72 +89,63 @@ public:
         v->midiNote = midiNote;
         v->velocity = velocity / 127.0f;
         v->active   = true;
-        v->adsr     = std::make_unique<ADSR>(engineSampleRate_, adsrParams_);
-        v->adsr->trigger();
+        // Reset and retrigger the value-type ADSR — zero allocation
+        v->adsr.setParameters(adsrParams_);
+        v->adsr.trigger();
     }
 
     void noteOff(int midiNote) override {
         if (oneShot_) return;
         for (auto& v : voices_)
-            if (v.active && v.midiNote == midiNote && v.adsr)
-                v.adsr->release();
+            if (v.active && v.midiNote == midiNote)
+                v.adsr.release();
     }
 
     void allNotesOff() override {
         for (auto& v : voices_)
-            if (v.active && v.adsr) { v.adsr->release(); }
+            if (v.active) v.adsr.release();
     }
 
-    void processBlock(std::shared_ptr<AudioBuffer> buffer) override {
-        if (!isLoaded() || !buffer) return;
+    void processBlock(AudioBuffer& buffer) override {
+        if (!isLoaded()) return;
 
-        const size_t ns = buffer->numSamples;
-        const size_t nch = buffer->channels.size();
+        const size_t ns  = buffer.numSamples;
+        const size_t nch = buffer.channels.size();
         const auto invFileChannels = 1.0f / static_cast<float>(numFileChannels_);
-        const auto totalFrames = static_cast<double>(numFrames_);
+        const auto totalFrames     = static_cast<double>(numFrames_);
 
         for (auto& v : voices_) {
             if (!v.active) continue;
 
-            // Cache voice state to local registers
-            double readPos = v.readPos;
-            const double speed = v.speed;
+            double readPos       = v.readPos;
+            const double speed   = v.speed;
             const float velocity = v.velocity;
             const float* dataPtr = sampleData_.data();
 
             for (size_t s = 0; s < ns; ++s) {
-                const float env = v.adsr->process();
+                const float env = v.adsr.process();
 
-                // Check bounds and ADSR state
-                if (!v.adsr->isActive() || readPos >= totalFrames - 1.0) [[unlikely]] {
+                if (!v.adsr.isActive() || readPos >= totalFrames - 1.0) [[unlikely]] {
                     v.active = false;
                     v.readPos = readPos;
                     break;
                 }
 
-                const auto fi = static_cast<size_t>(readPos);
-                const auto frac = static_cast<float>(readPos - static_cast<double>(fi));
-                const float invFrac = 1.0f - frac;
+                const auto   fi      = static_cast<size_t>(readPos);
+                const auto   frac    = static_cast<float>(readPos - static_cast<double>(fi));
+                const float  invFrac = 1.0f - frac;
+                const float  gain    = velocity * env * invFileChannels;
+                const size_t base    = fi * static_cast<size_t>(numFileChannels_);
 
-                // Combined gain factor: (Velocity * Envelope) / Channels
-                const float totalGain = velocity * env * invFileChannels;
-
-                // Manual unrolling/summing of file channels
-                float mono = 0.0f;
-                const size_t baseIdx = fi * static_cast<size_t>(numFileChannels_);
-
+                float mono = 0.f;
                 for (size_t fc = 0; fc < static_cast<size_t>(numFileChannels_); ++fc) {
-                    const float s0 = dataPtr[baseIdx + fc];
-                    const float s1 = dataPtr[baseIdx + fc + static_cast<size_t>(numFileChannels_)];
-                    mono += (s0 * invFrac) + (s1 * frac);
+                    mono += dataPtr[base + fc] * invFrac
+                          + dataPtr[base + fc + static_cast<size_t>(numFileChannels_)] * frac;
                 }
 
-                const float out = mono * totalGain;
-
-                // Vectorizable write to output channels
-                for (size_t c = 0; c < nch; ++c) {
-                    buffer->channels[c][s] += out;
-                }
+                const float out = mono * gain;
+                for (size_t c = 0; c < nch; ++c)
+                    buffer.channels[c][s] += out;
 
                 readPos += speed;
             }
@@ -169,7 +165,7 @@ private:
         float  velocity = 1.0f;
         double speed    = 1.0;
         double readPos  = 0.0;
-        std::unique_ptr<ADSR> adsr;   // heap-allocated – ADSR has no default ctor
+        ADSR   adsr{48000.0};   // value type — no heap allocation on noteOn
     };
 
     SampleVoice* findFreeVoice() {
@@ -178,7 +174,7 @@ private:
     }
     SampleVoice* stealVoice() {
         SampleVoice* best = nullptr; double maxPos = -1.0;
-        for (auto& v : voices_) { if (v.readPos > maxPos) { maxPos = v.readPos; best = &v; } }
+        for (auto& v : voices_) if (v.readPos > maxPos) { maxPos = v.readPos; best = &v; }
         return best;
     }
 
@@ -188,7 +184,7 @@ private:
     bool   oneShot_;
 
     std::string        filePath_;
-    std::vector<float> sampleData_;
+    std::vector<float> sampleData_;   // loaded once — OK to heap-allocate
     size_t             numFrames_       = 0;
     double             fileSampleRate_  = 44100.0;
     int                numFileChannels_ = 1;

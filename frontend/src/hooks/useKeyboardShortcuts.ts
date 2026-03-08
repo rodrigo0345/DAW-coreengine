@@ -41,7 +41,23 @@ export function useKeyboardShortcuts() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+
+      // ── Space – ALWAYS play/stop regardless of focus ──────────────────────
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        if (isPlaying) {
+          window.electronAPI?.pause();
+          setIsPlaying(false);
+        } else {
+          window.electronAPI?.play();
+          setIsPlaying(true);
+        }
+        return;
+      }
+
+      // All shortcuts below are blocked when typing in an input
+      if (inInput) return;
 
       const ctrl = e.ctrlKey || e.metaKey;
 
@@ -79,18 +95,6 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // ── Space – play / pause ────────────────────────────────────────────
-      if (e.key === ' ' || e.code === 'Space') {
-        e.preventDefault();
-        if (isPlaying) {
-          window.electronAPI?.pause();
-          setIsPlaying(false);
-        } else {
-          window.electronAPI?.play();
-          setIsPlaying(true);
-        }
-        return;
-      }
 
       if (!ctrl) return;
 

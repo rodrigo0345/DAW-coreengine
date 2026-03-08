@@ -21,28 +21,22 @@ public:
     explicit SquareOscillator(float pulseWidth = 0.5f)
         : pulseWidth_(pulseWidth) {}
 
-    void generate(std::shared_ptr<AudioBuffer> buffer,
+    void generate(AudioBuffer& buffer,
                  const float frequency,
                  const float amplitude,
                  float& phase) override {
-        const auto sr = static_cast<float>(buffer->sampleRate);
-        const float phaseInc = frequency / sr;
-
-        // 2. Local cache for speed
-        const size_t numSamples = buffer->numSamples;
-        const float pw = pulseWidth_; // Pulse width in range [0.0, 1.0]
-        const auto& channels = buffer->channels;
+        const auto sr = static_cast<float>(buffer.sampleRate);
+        const float phaseInc    = frequency / sr;
+        const size_t numSamples = buffer.numSamples;
+        const float  pw         = pulseWidth_;
+        const auto&  channels   = buffer.channels;
 
         for (size_t s = 0; s < numSamples; ++s) {
             const float sample = ((phase < pw) ? 1.0f : -1.0f) * amplitude;
-            for (const auto& channel : channels) {
+            for (const auto& channel : channels)
                 channel[s] += sample;
-            }
-
             phase += phaseInc;
-            if (phase >= 1.0f) [[unlikely]] {
-                phase -= 1.0f;
-            }
+            if (phase >= 1.0f) [[unlikely]] phase -= 1.0f;
         }
     }
 

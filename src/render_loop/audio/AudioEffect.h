@@ -22,7 +22,7 @@ namespace coreengine {
          * Process audio buffer through the effect
          * @param buffer The audio buffer to process (in-place processing)
          */
-        virtual void process(std::shared_ptr<AudioBuffer> buffer) = 0;
+        virtual void process(AudioBuffer& buffer) = 0;
 
         /**
          * Reset the effect state (clear delays, reverb tails, etc.)

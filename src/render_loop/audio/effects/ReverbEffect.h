@@ -47,33 +47,28 @@ public:
         for (auto& b : allpassR_) std::fill(b.buf.begin(), b.buf.end(), 0.f);
     }
 
-    void process(std::shared_ptr<AudioBuffer> buffer) override {
-        if (!enabled_ || !buffer || mix_ == 0.f) return;
-
-        const size_t n  = buffer->numSamples;
-        const size_t ch = buffer->channels.size();
+    void process(AudioBuffer& buffer) override {
+        if (!enabled_ || mix_ == 0.f) return;
+        const size_t n  = buffer.numSamples;
+        const size_t ch = buffer.channels.size();
         if (ch == 0) return;
 
         for (size_t s = 0; s < n; ++s) {
-            float inL = buffer->channels[0][s];
-            float inR = (ch > 1) ? buffer->channels[1][s] : inL;
+            float inL = buffer.channels[0][s];
+            float inR = (ch > 1) ? buffer.channels[1][s] : inL;
 
-            float input = (inL + inR) * 0.015f; // scale down to prevent saturation
+            float input = (inL + inR) * 0.015f;
 
             float outL = 0.f, outR = 0.f;
-
-            // ── 8 parallel comb filters ──────────────────────────────────
             for (auto& c : combL_) outL += processComb(c, input);
             for (auto& c : combR_) outR += processComb(c, input);
-
-            // ── 4 series all-pass filters ────────────────────────────────
             for (auto& a : allpassL_) outL = processAllpass(a, outL);
             for (auto& a : allpassR_) outR = processAllpass(a, outR);
 
-            float dry = 1.f - mix_;
-            buffer->channels[0][s] = inL * dry + outL * mix_;
+            const float dry = 1.f - mix_;
+            buffer.channels[0][s] = inL * dry + outL * mix_;
             if (ch > 1)
-                buffer->channels[1][s] = inR * dry + outR * mix_;
+                buffer.channels[1][s] = inR * dry + outR * mix_;
         }
     }
 

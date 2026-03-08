@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import {
   MIDI_RANGE, MIN_MIDI, MAX_MIDI,
   isBlackKey, midiNoteName, snapBeat, uid,
+  SCALES, SCALE_ROOTS, getScalePitchClasses,
 } from '../helpers/music';
 import { syncPatternToEngine } from '../helpers/engine';
 import './PianoRoll.css';
@@ -54,6 +55,11 @@ export default function PianoRoll() {
   // Force re-render when dragging so notes visually update
   const [, setTick] = useState(0);
   const forceRender = () => setTick((t) => t + 1);
+
+  // ── Scale ──────────────────────────────────────────────────────────────────
+  const [scaleName, setScaleName] = useState('None');
+  const [scaleRoot, setScaleRoot] = useState(0); // 0=C
+  const scalePCs = useMemo(() => getScalePitchClasses(scaleName, scaleRoot), [scaleName, scaleRoot]);
 
   const track = tracks.find((t) => t.id === selectedTrack);
   const pattern = patterns.find(p => p.id === activePatternId);
@@ -552,6 +558,15 @@ export default function PianoRoll() {
             <option value={4}>Bar</option>
           </select>
         </div>
+        <div className="pr-scale">
+          <label>Scale</label>
+          <select value={scaleRoot} onChange={e => setScaleRoot(Number(e.target.value))}>
+            {SCALE_ROOTS.map((r, i) => <option key={i} value={i}>{r}</option>)}
+          </select>
+          <select value={scaleName} onChange={e => setScaleName(e.target.value)}>
+            {Object.keys(SCALES).map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
       </div>
 
       {/* ── Ruler ───────────────────────────────────────────────────────── */}
@@ -585,10 +600,12 @@ export default function PianoRoll() {
             const midi = MAX_MIDI - i;
             const black = isBlackKey(midi);
             const isC = midi % 12 === 0;
+            const inScale = scalePCs.size > 0 && scalePCs.has(midi % 12);
+            const isRoot  = scalePCs.size > 0 && (midi % 12) === scaleRoot % 12;
             return (
               <div
                 key={midi}
-                className={`pr-key ${black ? 'black' : 'white'} ${isC ? 'oct' : ''}`}
+                className={`pr-key ${black ? 'black' : 'white'} ${isC ? 'oct' : ''} ${isRoot ? 'scale-root' : inScale ? 'scale-in' : scalePCs.size > 0 ? 'scale-out' : ''}`}
                 style={{ height: NOTE_H }}
               >
                 <span className="pr-key-label">
@@ -629,10 +646,12 @@ export default function PianoRoll() {
             {/* Row stripes */}
             {Array.from({ length: MIDI_RANGE }, (_, i) => {
               const midi = MAX_MIDI - i;
+              const inScale = scalePCs.size > 0 && scalePCs.has(midi % 12);
+              const isRoot  = scalePCs.size > 0 && (midi % 12) === scaleRoot % 12;
               return (
                 <div
                   key={midi}
-                  className={`pr-row ${isBlackKey(midi) ? 'dark' : ''} ${midi % 12 === 0 ? 'oct-line' : ''}`}
+                  className={`pr-row ${isBlackKey(midi) ? 'dark' : ''} ${midi % 12 === 0 ? 'oct-line' : ''} ${isRoot ? 'scale-root' : inScale ? 'scale-in' : scalePCs.size > 0 ? 'scale-out' : ''}`}
                   style={{ top: i * NOTE_H, height: NOTE_H }}
                 />
               );
@@ -654,17 +673,20 @@ export default function PianoRoll() {
             {trackNotes.map((note) => {
               const y = (MAX_MIDI - note.midiNote) * NOTE_H;
               const sel = selectedNotes.includes(note.id);
+              const inScale = scalePCs.size > 0 && scalePCs.has(note.midiNote % 12);
+              const isRoot  = scalePCs.size > 0 && (note.midiNote % 12) === scaleRoot % 12;
+              const scaleClass = scalePCs.size === 0 ? '' : isRoot ? 'note-root' : inScale ? 'note-in-scale' : 'note-out-scale';
               return (
                 <div
                   key={note.id}
                   data-id={note.id}
-                  className={`pr-note ${sel ? 'sel' : ''}`}
+                  className={`pr-note ${sel ? 'sel' : ''} ${scaleClass}`}
                   style={{
                     left: note.startBeat * pixelsPerBeat,
                     top: y,
                     width: Math.max(8, note.durationBeats * pixelsPerBeat - 1),
                     height: NOTE_H - 1,
-                    background: track?.color || '#555', // Fallback color
+                    background: track?.color || '#555',
                     opacity: note.velocity / 127 * 0.5 + 0.5,
                   }}
                   onMouseDown={(e) => onNoteDown(e, note.id, false)}

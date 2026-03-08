@@ -19,16 +19,13 @@ namespace coreengine {
             : drive_(std::clamp(drive, 0.1f, 10.0f))
         {}
 
-        void process(std::shared_ptr<AudioBuffer> buffer) override {
-            if (!enabled_ || !buffer) return;
+        void process(AudioBuffer& buffer) override {
+            if (!enabled_) return;
 
-            for (size_t s = 0; s < buffer->numSamples; ++s) {
-                for (const auto& channel : buffer->channels) {
-                    // Soft clipping using tanh
-                    const float input = channel[s];
-                    const float distorted = std::tanh(input * drive_) / std::tanh(drive_);
-
-                    // Mix dry/wet
+            for (size_t s = 0; s < buffer.numSamples; ++s) {
+                for (const auto& channel : buffer.channels) {
+                    const float input      = channel[s];
+                    const float distorted  = std::tanh(input * drive_) / std::tanh(drive_);
                     channel[s] = input * (1.0f - mix_) + distorted * mix_;
                 }
             }

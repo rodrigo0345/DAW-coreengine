@@ -167,14 +167,22 @@ namespace coreengine {
         int nextTrackId = 0;
 
         void triggerEvent(const TimelineEvent& event) {
-            if (!event.instrument) return;
+            // Resolve the live instrument from the track at trigger time.
+            // This is the key fix: we never cache the raw pointer across the
+            // processCommands → processEventsForBlock boundary, so a
+            // replaceInstrument call between those two phases can never
+            // produce a dangling pointer here.
+            Track* track = getTrack(event.trackId);
+            if (!track) return;
+            Instrument* inst = track->getInstrument();
+            if (!inst) return;
 
             switch (event.type) {
                 case EventType::NoteOn:
-                    event.instrument->noteOn(event.midiNote, event.velocity);
+                    inst->noteOn(event.midiNote, event.velocity);
                     break;
                 case EventType::NoteOff:
-                    event.instrument->noteOff(event.midiNote);
+                    inst->noteOff(event.midiNote);
                     break;
                 default:
                     break;

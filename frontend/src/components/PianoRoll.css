@@ -56,6 +56,32 @@
   font-size: 0.7rem;
 }
 
+/* ── Scale selector ─────────────────────────────────────────────────────── */
+.pr-scale {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  padding-left: 0.6rem;
+  border-left: 1px solid var(--border-color);
+}
+.pr-scale select {
+  background: var(--bg-darker);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.7rem;
+}
+.pr-scale label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #4caf50;
+}
+
 /* ── Ruler row ───────────────────────────────────────────────────────────── */
 .pr-ruler-row {
   display: flex;
@@ -253,3 +279,32 @@
   pointer-events: none;
   z-index: 100;
 }
+
+/* ── Scale highlighting ──────────────────────────────────────────────────── */
+/* Grid rows */
+.pr-row.scale-in   { background: rgba(76, 175, 80, 0.07); }
+.pr-row.scale-root { background: rgba(76, 175, 80, 0.18); }
+.pr-row.scale-out  { background: rgba(0, 0, 0, 0.30); }
+
+/* Piano keys */
+.pr-key.scale-in.white  { background: #c8e6c9; }
+.pr-key.scale-in.black  { background: #2e5e30; }
+.pr-key.scale-root.white { background: #4caf50; color: #fff; }
+.pr-key.scale-root.black { background: #388e3c; color: #fff; }
+.pr-key.scale-out.white  { background: #b0b0b0; color: #666; }
+.pr-key.scale-out.black  { background: #1a1a1a; color: #444; }
+
+/* Notes */
+.pr-note.note-in-scale {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 1px 3px rgba(0,0,0,.35),
+              0 0 0 1px rgba(76,175,80,.5);
+}
+.pr-note.note-root {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 2px 6px rgba(0,0,0,.4),
+              0 0 0 2px #4caf50;
+}
+.pr-note.note-out-scale {
+  opacity: 0.38 !important;
+  filter: saturate(0.4);
+}
+

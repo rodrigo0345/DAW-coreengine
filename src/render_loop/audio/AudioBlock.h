@@ -5,14 +5,13 @@
 #ifndef DAWCOREENGINE_AUDIOBLOCK_H
 #define DAWCOREENGINE_AUDIOBLOCK_H
 
-#include <memory>
 #include "AudioBuffer.h"
 
 
 namespace coreengine {
     class AudioBlock {
     public:
-        virtual void processBlock(std::shared_ptr<coreengine::AudioBuffer> buffer) = 0;
+        virtual void processBlock(AudioBuffer& buffer) = 0;
         virtual void releaseResources() = 0;
         virtual ~AudioBlock() = default;
     };

@@ -5,6 +5,7 @@
 #ifndef DAWCOREENGINE_TRACK_H
 #define DAWCOREENGINE_TRACK_H
 
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
@@ -22,7 +23,15 @@ namespace coreengine {
     class Track {
     public:
         Track(int id, std::string name, std::unique_ptr<Instrument> inst)
-            : trackId(id), trackName(std::move(name)), instrument(std::move(inst)) {}
+            : trackId(id), trackName(std::move(name)), instrument(std::move(inst))
+        {
+            // Pre-wire scratch AudioBuffer — channels point into fixed storage, never re-allocated
+            scratchBuf_.sampleRate = 44100;
+            scratchBuf_.numSamples = MAX_BLOCK_SIZE;
+            scratchBuf_.channels.resize(MAX_CHANNELS);
+            for (size_t i = 0; i < MAX_CHANNELS; ++i)
+                scratchBuf_.channels[i] = scratchStorage_[i].data();
+        }
 
         int getTrackId() const { return trackId; }
         const std::string& getName() const { return trackName; }
@@ -32,10 +41,9 @@ namespace coreengine {
         void replaceInstrument(std::unique_ptr<Instrument> newInst) {
             if (instrument) instrument->allNotesOff();
             instrument = std::move(newInst);
-            // Re-point existing events at the new instrument
-            for (auto& ev : events) {
-                ev.instrument = instrument.get();
-            }
+            // No need to re-point events: TimelineEvent no longer stores a raw
+            // instrument pointer. triggerEvent resolves the live instrument via
+            // trackId at call time, so sortedEvents in Timeline is always safe.
         }
 
         void setMuted(bool muted) { isMuted = muted; }
@@ -49,8 +57,8 @@ namespace coreengine {
 
         // Add a note to this track
         void addNote(uint64_t startSample, uint64_t durationSamples, int midiNote, float velocity) {
-            events.emplace_back(startSample, EventType::NoteOn, instrument.get(), midiNote, velocity);
-            events.emplace_back(startSample + durationSamples, EventType::NoteOff, instrument.get(), midiNote, 0.0f);
+            events.emplace_back(startSample,                   EventType::NoteOn,  trackId, midiNote, velocity);
+            events.emplace_back(startSample + durationSamples, EventType::NoteOff, trackId, midiNote, 0.0f);
         }
 
         // Get all events for this track
@@ -74,58 +82,48 @@ namespace coreengine {
 
         EffectChain& getEffectChain() { return effectChain_; }
 
-        // Process audio for this track into the output buffer
-        void processBlock(std::shared_ptr<AudioBuffer> buffer) {
+        // ── Zero-alloc processBlock ────────────────────────────────────────────
+        void processBlock(AudioBuffer& output) {
             if (!instrument || isMuted) return;
 
-            const auto numSamples  = buffer->numSamples;
-            const auto numChannels = buffer->channels.size();
+            const size_t ns  = output.numSamples;
+            const size_t nch = std::min(output.channels.size(), MAX_CHANNELS);
 
-            // Ensure scratch buffers are large enough
-            if (scratchChannels_.size() != numChannels) {
-                scratchChannels_.resize(numChannels);
+            // Update scratch size/rate (no allocation — storage is fixed)
+            scratchBuf_.sampleRate = output.sampleRate;
+            scratchBuf_.numSamples = ns;
+            // Resize channel pointer vector only if channel count changed (rare)
+            if (scratchBuf_.channels.size() != nch) {
+                scratchBuf_.channels.resize(nch);
+                for (size_t i = 0; i < nch; ++i)
+                    scratchBuf_.channels[i] = scratchStorage_[i].data();
             }
-            for (auto& ch : scratchChannels_) {
-                if (ch.size() < numSamples)
-                    ch.resize(numSamples, 0.0f);
-                std::fill_n(ch.data(), numSamples, 0.0f);
-            }
 
-            // Build a temporary AudioBuffer pointing at our scratch memory
-            auto tmpBuf = std::make_shared<AudioBuffer>();
-            tmpBuf->sampleRate = buffer->sampleRate;
-            tmpBuf->numSamples = numSamples;
-            tmpBuf->channels.resize(numChannels);
-            for (size_t c = 0; c < numChannels; ++c)
-                tmpBuf->channels[c] = scratchChannels_[c].data();
+            for (size_t i = 0; i < nch; ++i)
+                std::fill_n(scratchStorage_[i].data(), ns, 0.f);
 
-            // Let the instrument render into the scratch buffer
-            instrument->processBlock(tmpBuf);
+            instrument->processBlock(scratchBuf_);
+            effectChain_.process(scratchBuf_);
 
-            // ── Run effect chain on the scratch buffer ─────────────────────
-            effectChain_.process(tmpBuf);
-
-            // Mix scratch into the real output, applying track volume
-            for (size_t c = 0; c < numChannels; ++c) {
-                for (size_t s = 0; s < numSamples; ++s) {
-                    buffer->channels[c][s] += scratchChannels_[c][s] * volume;
-                }
-            }
+            for (size_t c = 0; c < nch; ++c)
+                for (size_t s = 0; s < ns; ++s)
+                    output.channels[c][s] += scratchStorage_[c][s] * volume;
         }
 
     private:
-        int trackId;
+        int   trackId;
         std::string trackName;
         std::unique_ptr<Instrument> instrument;
-        std::vector<TimelineEvent> events;
+        std::vector<TimelineEvent>  events;
         EffectChain effectChain_;
 
         bool  isMuted = false;
         bool  isSolo  = false;
         float volume  = 1.0f;
 
-        // Per-track scratch buffers for safe mixing
-        std::vector<std::vector<float>> scratchChannels_;
+        // Fixed scratch — no heap per block
+        std::array<std::array<float, MAX_BLOCK_SIZE>, MAX_CHANNELS> scratchStorage_{};
+        AudioBuffer scratchBuf_;   // channels[] wired to scratchStorage_ in ctor
     };
 }
 

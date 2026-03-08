@@ -5,7 +5,6 @@
 #ifndef DAWCOREENGINE_OSCILLATOR_H
 #define DAWCOREENGINE_OSCILLATOR_H
 
-#include <memory>
 #include "AudioBuffer.h"
 
 namespace coreengine {
@@ -24,7 +23,7 @@ namespace coreengine {
          * @param amplitude The amplitude (0.0 to 1.0)
          * @param phase The current phase (will be updated)
          */
-        virtual void generate(std::shared_ptr<AudioBuffer> buffer,
+        virtual void generate(AudioBuffer& buffer,
                             float frequency,
                             float amplitude,
                             float& phase) = 0;
