@@ -77,21 +77,31 @@ namespace coreengine {
             addNote(trackId, startSample, durationSamples, midiNote, velocity);
         }
 
+        // Returns true if at least one track has solo enabled
+        [[nodiscard]] bool anySoloActive() const {
+            for (const auto& t : tracks)
+                if (t->getSolo()) return true;
+            return false;
+        }
+
+        // Returns true if this track should produce audio given current solo/mute state
+        [[nodiscard]] bool trackIsAudible(const Track& t) const {
+            if (t.getMuted()) return false;
+            if (anySoloActive() && !t.getSolo()) return false;
+            return true;
+        }
+
         // Process events for the current block
         void processEventsForBlock(uint64_t currentSamplePos, uint64_t blockSize) {
-            uint64_t blockEnd = currentSamplePos + blockSize;
+            const uint64_t blockEnd  = currentSamplePos + blockSize;
+            const bool     soloMode  = anySoloActive();
 
-            // Process all events that fall within this block
             while (eventQueueIndex < sortedEvents.size()) {
                 const auto& event = sortedEvents[eventQueueIndex];
-
-                if (event.samplePosition >= blockEnd) {
-                    break; // Events beyond current block
-                }
+                if (event.samplePosition >= blockEnd) break;
 
                 if (event.samplePosition >= currentSamplePos) {
-                    // Trigger event
-                    triggerEvent(event);
+                    triggerEvent(event, soloMode);
                 }
 
                 eventQueueIndex++;
@@ -166,14 +176,14 @@ namespace coreengine {
         size_t eventQueueIndex = 0;  // Current position in event queue
         int nextTrackId = 0;
 
-        void triggerEvent(const TimelineEvent& event) {
-            // Resolve the live instrument from the track at trigger time.
-            // This is the key fix: we never cache the raw pointer across the
-            // processCommands → processEventsForBlock boundary, so a
-            // replaceInstrument call between those two phases can never
-            // produce a dangling pointer here.
+        void triggerEvent(const TimelineEvent& event, bool soloMode) {
             Track* track = getTrack(event.trackId);
             if (!track) return;
+
+            // Enforce mute / solo: silence NoteOn for non-audible tracks.
+            // Always let NoteOff through so voices don't hang.
+            if (event.type == EventType::NoteOn && !trackIsAudible(*track)) return;
+
             Instrument* inst = track->getInstrument();
             if (!inst) return;
 

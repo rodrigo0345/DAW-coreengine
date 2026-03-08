@@ -142,6 +142,8 @@ interface AppState {
   setSampleFile: (trackId: number, filePath: string, rootNote: number, oneShot: boolean) => void;
   setTrackVoiceCount: (trackId: number, numVoices: number) => void;
   setSynthTypeOnTrack: (trackId: number, synthType: number) => void;
+  // ── Solo (exclusive) ─────────────────────────────────────────────────────
+  toggleSolo: (trackId: number) => void;
 }
 export const uid = () => Math.random().toString(36).slice(2, 11);
 function snap(s: AppState): Snapshot {
@@ -214,6 +216,21 @@ export const useStore = create<AppState>((set, get) => ({
     clips:  s.clips.filter(c => c.trackId !== id),
   })),
   updateTrack: (id, u) => set(s => ({ tracks: s.tracks.map(t => t.id === id ? { ...t, ...u } : t) })),
+  toggleSolo: (trackId) => {
+    const { tracks } = get();
+    const track = tracks.find(t => t.id === trackId);
+    if (!track) return;
+    const newSolo = !track.solo;
+    // Exclusive solo: clear all others first, then set this one
+    set(s => ({
+      tracks: s.tracks.map(t => ({ ...t, solo: t.id === trackId ? newSolo : false })),
+    }));
+    // Tell the engine about every track's new solo state
+    tracks.forEach(t => {
+      const val = t.id === trackId ? (newSolo ? 1 : 0) : 0;
+      window.electronAPI?.setTrackSolo({ trackId: t.id, value: val });
+    });
+  },
   setSelectedTrack: (id) => set({ selectedTrack: id }),
   addNote: (note) => { get().pushUndo(); set(s => ({ notes: [...s.notes, note] })); },
   removeNote: (id) => {

@@ -161,3 +161,100 @@ class Effect : public AudioBlock {
 };
 ```
 
+## Frontend ↔ Backend Communication
+
+The UI and the C++ engine are two completely separate processes. All communication flows
+through a single **newline-delimited JSON** channel over the engine's **stdin / stdout**.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Electron Renderer (React + Zustand)                            │
+│                                                                 │
+│  window.electronAPI.addTrack(...)   ← preload.ts bridge        │
+└────────────────────┬────────────────────────────────────────────┘
+                     │  contextBridge / ipcRenderer.invoke()
+                     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Electron Main Process  (electron/main.ts)                      │
+│                                                                 │
+│  ipcMain.handle('timeline:addTrack', ...)                       │
+│    → sendToEngine({ type: 'AddTrack', data: { ... } })         │
+└────────────────────┬────────────────────────────────────────────┘
+                     │  engineProcess.stdin.write(json + '\n')
+                     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  C++ Engine  (main_interactive.cpp)                             │
+│                                                                 │
+│  while (getline(cin, line))                                     │
+│    doc = CommandJSONParser::parse(line)                         │
+│    commandQueue.push( CommandAPI::execute(doc) )                │
+└────────────────────┬────────────────────────────────────────────┘
+                     │  CommandQueue (lock-free push from main,
+                     │               pop from audio thread)
+                     ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  RenderLoop  (audio thread)                                     │
+│                                                                 │
+│  processNextBlock()                                             │
+│    → processCommands()   ← drains the queue each block         │
+│    → timeline.processEventsForBlock()                           │
+│    → track->processBlock()  for each audible track             │
+│    → masterLimiter                                              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Message format
+
+Every message sent **to** the engine is a single JSON line:
+
+```json
+{ "type": "CommandName", "data": { ...payload... } }
+```
+
+The engine replies on **stdout** with plain-text log lines (displayed in the UI console).
+There is no request/response pairing — commands are fire-and-forget; the audio thread
+applies them on the next block boundary.
+
+### Full command reference
+
+| `type` | Direction | Payload fields |
+|---|---|---|
+| `Play` | UI → Engine | — |
+| `Stop` | UI → Engine | — |
+| `Pause` | UI → Engine | — |
+| `Seek` | UI → Engine | `samplePosition: number` |
+| `AddTrack` | UI → Engine | `trackId, name, synthType, numVoices` |
+| `ClearTrack` | UI → Engine | `trackId` |
+| `AddNote` | UI → Engine | `trackId, startBeat, durationBeats, midiNote, velocity, bpm, sampleRate` |
+| `RebuildTimeline` | UI → Engine | — |
+| `SetTrackVolume` | UI → Engine | `trackId, value` (0–1) |
+| `SetTrackMute` | UI → Engine | `trackId, value` (0 or 1) |
+| `SetTrackSolo` | UI → Engine | `trackId, value` (0 or 1) |
+| `SetADSR` | UI → Engine | `trackId, attack, decay, sustain, release` (seconds) |
+| `SetSynthType` | UI → Engine | `trackId, synthType, numVoices, sampleRate` |
+| `SetVoiceCount` | UI → Engine | `trackId, numVoices` |
+| `LoadSample` | UI → Engine | `trackId, filePath, rootNote, oneShot` |
+| `SetTrackEffect` | UI → Engine | `trackId, effectType, enabled, mix, [roomSize, damping, delayMs, feedback, drive …]` |
+| `RemoveTrackEffect` | UI → Engine | `trackId, effectType` |
+| `SetEffectParam` | UI → Engine | `trackId, effectType, paramName, value` |
+| `SetAutomationLane` | UI → Engine | `trackId, paramName, points:[{beat,value}], bpm, sampleRate` |
+| `ClearAutomationLane` | UI → Engine | `trackId, paramName` |
+| `SetTimestamp` | UI → Engine | `samples` |
+
+### Thread safety
+
+The command queue is the **only** shared data structure between the main thread (JSON reader)
+and the audio thread (render loop).  All other engine state is owned exclusively by the
+audio thread and mutated only inside `processCommands()` at the top of each block, so no
+locks are needed on the hot path.
+
+```
+Main thread          Audio thread
+──────────           ────────────
+parse JSON           processNextBlock()
+push Command    ───▶  processCommands()   (pop + apply)
+                      processEventsForBlock()
+                      track->processBlock() × N
+                      masterLimiter
+                      pa_simple_write()
+```

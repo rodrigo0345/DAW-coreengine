@@ -8,7 +8,7 @@ const TRACK_COLORS = ['#f44336','#e91e63','#9c27b0','#673ab7','#3f51b5','#2196f3
 const AUTOMATION_H = 72;
 
 export default function TrackList() {
-  const { tracks, selectedTrack, addTrack, updateTrack, setSelectedTrack, automationLanes, setSampleFile } = useStore();
+  const { tracks, selectedTrack, addTrack, updateTrack, toggleSolo, setSelectedTrack, automationLanes, setSampleFile } = useStore();
   const tracksRef = useRef<HTMLDivElement>(null);
   const [dragOverTrackId, setDragOverTrackId] = useState<number | null>(null);
   const [draggingOver, setDraggingOver]       = useState(false);
@@ -145,7 +145,7 @@ export default function TrackList() {
                   <button className={`track-btn ${track.muted ? 'active' : ''}`} title="Mute"
                     onClick={e => { e.stopPropagation(); const n = !track.muted; updateTrack(track.id, { muted: n }); window.electronAPI?.setTrackMute({ trackId: track.id, value: n ? 1 : 0 }); }}>M</button>
                   <button className={`track-btn ${track.solo ? 'active' : ''}`} title="Solo"
-                    onClick={e => { e.stopPropagation(); const n = !track.solo; updateTrack(track.id, { solo: n }); window.electronAPI?.setTrackSolo({ trackId: track.id, value: n ? 1 : 0 }); }}>S</button>
+                    onClick={e => { e.stopPropagation(); toggleSolo(track.id); }}>S</button>
                 </div>
               </div>
               {trackLanes.map(lane => (

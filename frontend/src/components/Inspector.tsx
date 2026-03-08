@@ -116,7 +116,7 @@ function midiNoteName(midi: number): string {
 // ─── Inspector ────────────────────────────────────────────────────────────────
 export default function Inspector() {
   const {
-    tracks, selectedTrack, updateTrack, bpm, sampleRate,
+    tracks, selectedTrack, updateTrack, toggleSolo, bpm, sampleRate,
     setSampleFile, setTrackVoiceCount, setSynthTypeOnTrack,
   } = useStore();
   const track = tracks.find(t => t.id === selectedTrack);
@@ -224,7 +224,7 @@ export default function Inspector() {
   // ── Volume / Mute / Solo ──────────────────────────────────────────────────
   const handleVolume = (v: number) => { if (!track) return; updateTrack(track.id, { volume: v }); window.electronAPI?.setTrackVolume({ trackId: track.id, value: v }); };
   const handleMute   = () => { if (!track) return; const n = !track.muted; updateTrack(track.id, { muted: n }); window.electronAPI?.setTrackMute({ trackId: track.id, value: n ? 1 : 0 }); };
-  const handleSolo   = () => { if (!track) return; const n = !track.solo;  updateTrack(track.id, { solo:  n }); window.electronAPI?.setTrackSolo({ trackId: track.id, value: n ? 1 : 0 }); };
+  const handleSolo   = () => { if (!track) return; toggleSolo(track.id); };
   // ── Render ────────────────────────────────────────────────────────────────
   if (!track) {
     return (

@@ -143,6 +143,9 @@ void coreengine::RenderLoop::processCommands() {
                 Track* track = timeline.getTrack(data.trackId);
                 if (track) {
                     track->setMuted(data.value > 0.5f);
+                    // Silence any hanging notes immediately
+                    if (!timeline.trackIsAudible(*track) && track->getInstrument())
+                        track->getInstrument()->allNotesOff();
                 }
                 break;
             }
@@ -151,6 +154,11 @@ void coreengine::RenderLoop::processCommands() {
                 Track* track = timeline.getTrack(data.trackId);
                 if (track) {
                     track->setSolo(data.value > 0.5f);
+                    // Silence every track that is now non-audible
+                    for (auto& t : timeline.getAllTracks()) {
+                        if (!timeline.trackIsAudible(*t) && t->getInstrument())
+                            t->getInstrument()->allNotesOff();
+                    }
                 }
                 break;
             }
@@ -352,8 +360,10 @@ void coreengine::RenderLoop::processNextBlock() {
     applyAutomation(positionClock, audioBuffer_.numSamples);
     auto t4 = clock::now();
 
-    for (auto& track : timeline.getAllTracks())
-        track->processBlock(audioBuffer_);
+    for (auto& track : timeline.getAllTracks()) {
+        if (timeline.trackIsAudible(*track))
+            track->processBlock(audioBuffer_);
+    }
     for (const auto& processor : processorBlocks)
         processor->processBlock(audioBuffer_);
     auto t5 = clock::now();
