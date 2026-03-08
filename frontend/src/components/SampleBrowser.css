@@ -1,0 +1,342 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sample Browser
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.sb-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.sb-header {
+  flex-shrink: 0;
+  padding: 0.4rem 0.5rem 0.3rem;
+  background: var(--bg-darker);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sb-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.sb-up-btn,
+.sb-edit-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.sb-up-btn:hover,
+.sb-edit-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.sb-path {
+  flex: 1;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-dir-input-row {
+  display: flex;
+  gap: 0.3rem;
+}
+.sb-dir-input {
+  flex: 1;
+  background: var(--bg-darker);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 0.68rem;
+  padding: 0.2rem 0.4rem;
+  outline: none;
+}
+.sb-dir-ok {
+  padding: 0.2rem 0.5rem;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s;
+}
+.sb-dir-ok:hover { background: var(--accent-hover); }
+
+/* ── Search ──────────────────────────────────────────────────────────────── */
+.sb-search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.sb-search-icon { font-size: 0.75rem; flex-shrink: 0; opacity: 0.5; }
+.sb-search {
+  flex: 1;
+  background: #1a1a1a;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  padding: 0.3rem 0.4rem;
+  outline: none;
+  transition: border-color 0.15s;
+  min-width: 0;
+}
+.sb-search:focus { border-color: var(--accent); }
+.sb-search::placeholder { color: var(--text-secondary); opacity: 0.6; }
+
+.sb-clear-search {
+  width: 18px; height: 18px;
+  background: none; border: none;
+  color: var(--text-secondary);
+  font-size: 0.7rem; cursor: pointer;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  transition: color 0.15s;
+}
+.sb-clear-search:hover { color: var(--danger); }
+
+.sb-loading-dot {
+  font-size: 0.8rem; color: var(--accent); flex-shrink: 0;
+  animation: sb-blink 1s infinite;
+}
+@keyframes sb-blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+/* ── Hint ─────────────────────────────────────────────────────────────────── */
+.sb-hint {
+  flex-shrink: 0;
+  font-size: 0.59rem;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  padding: 0.2rem 0.6rem;
+  background: var(--bg-darker);
+  border-bottom: 1px solid var(--border-color);
+  letter-spacing: 0.02em;
+}
+
+/* ── Body ────────────────────────────────────────────────────────────────── */
+.sb-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.15rem 0;
+}
+.sb-body::-webkit-scrollbar { width: 5px; }
+.sb-body::-webkit-scrollbar-track { background: var(--bg-darker); }
+.sb-body::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+
+/* ── Folder rows ─────────────────────────────────────────────────────────── */
+.sb-folder-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.32rem 0.5rem;
+  cursor: pointer;
+  transition: background 0.12s;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.sb-folder-row:hover { background: var(--bg-hover); }
+
+.sb-folder-icon { font-size: 0.9rem; flex-shrink: 0; }
+
+.sb-folder-name {
+  flex: 1;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.sb-folder-arrow {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.15s, color 0.15s;
+}
+.sb-folder-row:hover .sb-folder-arrow {
+  opacity: 1;
+  color: var(--accent);
+}
+
+/* ── File rows ───────────────────────────────────────────────────────────── */
+.sb-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  cursor: grab;
+  border-radius: 2px;
+  transition: background 0.12s;
+  user-select: none;
+}
+.sb-file-row:hover  { background: var(--bg-hover); }
+.sb-file-row.playing {
+  background: rgba(92, 158, 255, 0.1);
+  border-left: 2px solid var(--accent);
+  padding-left: calc(0.5rem - 2px);
+}
+.sb-file-row:active { cursor: grabbing; }
+
+.sb-file-icon {
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  width: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sb-file-name {
+  flex: 1;
+  font-size: 0.7rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.sb-file-row.playing .sb-file-name { color: var(--accent); }
+
+.sb-file-ext {
+  flex-shrink: 0;
+  font-size: 0.55rem;
+  color: var(--text-secondary);
+  background: var(--bg-darker);
+  padding: 0.08rem 0.28rem;
+  border-radius: 2px;
+  font-family: 'Courier New', monospace;
+}
+
+.sb-preview-btn {
+  flex-shrink: 0;
+  width: 20px; height: 20px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  color: var(--text-secondary);
+  font-size: 0.55rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.sb-file-row:hover .sb-preview-btn { opacity: 1; }
+.sb-file-row.playing .sb-preview-btn {
+  opacity: 1;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.sb-preview-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Search results ──────────────────────────────────────────────────────── */
+.sb-search-result { display: flex; flex-direction: column; }
+.sb-result-path {
+  font-size: 0.57rem;
+  color: var(--text-secondary);
+  opacity: 0.45;
+  padding: 0 0.5rem 0.3rem 26px;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Empty / loading ─────────────────────────────────────────────────────── */
+.sb-empty {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  text-align: center;
+  padding: 1.5rem 1rem;
+  line-height: 1.7;
+}
+.sb-empty code {
+  font-size: 0.65rem;
+  background: var(--bg-darker);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  color: var(--accent);
+  word-break: break-all;
+}
+
+/* ── Now playing bar ─────────────────────────────────────────────────────── */
+.sb-now-playing {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: rgba(92, 158, 255, 0.08);
+  border-top: 1px solid rgba(92, 158, 255, 0.25);
+}
+.sb-now-playing-name {
+  flex: 1;
+  font-size: 0.67rem;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sb-stop-btn {
+  width: 20px; height: 20px;
+  background: var(--danger);
+  border: none; border-radius: 3px;
+  color: #fff; font-size: 0.55rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.sb-stop-btn:hover { opacity: 0.8; }
+
+/* ── Waveform ────────────────────────────────────────────────────────────── */
+.sb-waveform {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 14px;
+  width: 18px;
+}
+.sb-waveform-bar {
+  display: inline-block;
+  width: 2px; height: 3px;
+  background: var(--accent);
+  border-radius: 1px;
+  animation: sb-bar 0.7s ease-in-out infinite alternate;
+}
+@keyframes sb-bar {
+  from { height: 2px; }
+  to   { height: 13px; }
+}

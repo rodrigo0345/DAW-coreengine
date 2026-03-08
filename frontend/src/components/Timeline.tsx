@@ -836,17 +836,20 @@ export default function Timeline() {
           {clips.map(clip => {
             const tIdx = tracks.findIndex(t => t.id === clip.trackId);
             if (tIdx < 0) return null;
-            const track   = tracks[tIdx];
-            const sel     = selectedClips.includes(clip.id);
+            const track    = tracks[tIdx];
+            const sel      = selectedClips.includes(clip.id);
             const isActive = clip.patternId === activePatternId;
-            const pat     = patterns.find(p => p.id === clip.patternId);
-            const w       = Math.max(8, clip.duration * pixelsPerBeat - 2);
-            const top     = (trackTops[track.id] ?? tIdx * TRACK_H) + 2;
+            const pat      = patterns.find(p => p.id === clip.patternId);
+            const w        = Math.max(8, clip.duration * pixelsPerBeat - 2);
+            const top      = (trackTops[track.id] ?? tIdx * TRACK_H) + 2;
+
+            // Audio clip: sampler track that hasn't opted into MIDI view
+            const isAudioClip = track.synthType === 4 && track.sampleFile && !track.useMidi;
 
             return (
               <div
                 key={clip.id}
-                className={`tl-clip ${sel ? 'sel' : ''} ${isActive ? 'active-pat' : ''}`}
+                className={`tl-clip ${sel ? 'sel' : ''} ${isActive ? 'active-pat' : ''} ${isAudioClip ? 'audio-clip' : ''}`}
                 style={{
                   left:   clip.startBeat * pixelsPerBeat,
                   top,
@@ -858,13 +861,29 @@ export default function Timeline() {
                 onDoubleClick={e => onClipDblClick(e, clip.id)}
                 onContextMenu={e => onClipContext(e, clip.id)}
               >
-                {/* Pattern name label */}
-                <div className="tl-clip-label">{pat?.name ?? '?'}</div>
-
-                {/* Mini-note preview */}
-                <div className="tl-clip-preview">
-                  {renderPreview(clip.patternId, clip.duration)}
-                </div>
+                {isAudioClip ? (
+                  /* ── Audio clip (FL-studio style) ── */
+                  <>
+                    <div className="tl-clip-audio-label">
+                      <span className="tl-clip-audio-icon">▶</span>
+                      {track.sampleFile!.split('/').pop()?.replace(/\.[^.]+$/, '')}
+                    </div>
+                    <div className="tl-clip-waveform" aria-hidden>
+                      {Array.from({ length: Math.max(4, Math.floor(w / 6)) }).map((_, i) => {
+                        const h = 30 + Math.sin(i * 1.7) * 18 + Math.sin(i * 0.9 + 1) * 12;
+                        return <span key={i} className="tl-wf-bar" style={{ height: `${Math.abs(h)}%` }} />;
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  /* ── MIDI clip ── */
+                  <>
+                    <div className="tl-clip-label">{pat?.name ?? '?'}</div>
+                    <div className="tl-clip-preview">
+                      {renderPreview(clip.patternId, clip.duration)}
+                    </div>
+                  </>
+                )}
 
                 {/* Resize handle */}
                 <div

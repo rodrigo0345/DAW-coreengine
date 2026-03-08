@@ -57,21 +57,64 @@
 /* ── Body grid ───────────────────────────────────────────────────────────── */
 .app-body {
   display: grid;
-  grid-template-columns: 220px 1fr 260px;
+  grid-template-columns: 200px 200px 1fr 260px;
   flex: 1;
   overflow: hidden;
+  transition: grid-template-columns 0.2s ease;
+}
+.app-body.samples-collapsed {
+  grid-template-columns: 28px 200px 1fr 260px;
 }
 
 /* Sidebars */
 .sidebar-left,
+.sidebar-samples,
 .sidebar-right {
   background: var(--bg-panel);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
 }
-.sidebar-left  { border-right: 1px solid var(--border-color); }
-.sidebar-right { border-left: 1px solid var(--border-color); }
+.sidebar-left    { border-right: 1px solid var(--border-color); }
+.sidebar-samples { border-right: 1px solid var(--border-color); position: relative; }
+.sidebar-right   { border-left:  1px solid var(--border-color); }
+
+/* Collapsed state */
+.sidebar-samples.collapsed {
+  width: 28px;
+  min-width: 28px;
+}
+
+/* Toggle button */
+.sidebar-samples-toggle {
+  flex-shrink: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: var(--bg-darker);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  transition: color 0.15s, background 0.15s;
+  user-select: none;
+}
+.sidebar-samples-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+.sidebar-samples.collapsed .sidebar-samples-toggle {
+  height: 100%;
+  flex-direction: column;
+  writing-mode: vertical-rl;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  gap: 6px;
+  border-bottom: none;
+  border-right: 1px solid var(--border-color);
+}
+
 
 .sidebar-hdr {
   padding: 0.5rem 0.75rem;
@@ -175,10 +218,15 @@
 .console-body .ok  { color: var(--success); }
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
-@media (max-width: 1100px) {
-  .app-body { grid-template-columns: 200px 1fr 240px; }
+@media (max-width: 1300px) {
+  .app-body { grid-template-columns: 180px 180px 1fr 240px; }
 }
-@media (max-width: 860px) {
-  .app-body { grid-template-columns: 180px 1fr; }
+@media (max-width: 1000px) {
+  .app-body { grid-template-columns: 160px 160px 1fr; }
+  .sidebar-right { display: none; }
+}
+@media (max-width: 720px) {
+  .app-body { grid-template-columns: 160px 1fr; }
+  .sidebar-samples { display: none; }
   .sidebar-right { display: none; }
 }

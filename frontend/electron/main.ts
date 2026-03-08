@@ -1,6 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
+
 
 let mainWindow: BrowserWindow | null = null;
 let engineProcess: ChildProcess | null = null;
@@ -195,9 +198,74 @@ ipcMain.handle('send-command', async (_e, command: string) => {
   return { success: false, error: 'Engine not running' };
 });
 
+// ─── IPC: Sample Browser ─────────────────────────────────────────────────────
+
+const AUDIO_EXTENSIONS = new Set(['.wav', '.flac', '.aiff', '.aif', '.ogg', '.mp3']);
+
+interface DirEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  ext: string;
+}
+
+ipcMain.handle('browser:getMusicDir', async () => {
+  // Try /home/rodrigo0345/Music first, fall back to ~/Music
+  const preferred = '/home/rodrigo0345/Music';
+  if (fs.existsSync(preferred)) return preferred;
+  return path.join(os.homedir(), 'Music');
+});
+
+ipcMain.handle('browser:listDir', async (_e, dirPath: string): Promise<DirEntry[]> => {
+  try {
+    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+    return entries
+      .filter(e => {
+        if (e.isDirectory()) return !e.name.startsWith('.');
+        const ext = path.extname(e.name).toLowerCase();
+        return AUDIO_EXTENSIONS.has(ext);
+      })
+      .map(e => ({
+        name: e.name,
+        path: path.join(dirPath, e.name),
+        isDir: e.isDirectory(),
+        ext: path.extname(e.name).toLowerCase(),
+      }))
+      .sort((a, b) => {
+        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+  } catch (err) {
+    console.error('browser:listDir error', err);
+    return [];
+  }
+});
+
+ipcMain.handle('browser:getAudioUrl', async (_e, filePath: string): Promise<string | null> => {
+  try {
+    const ext = path.extname(filePath).toLowerCase();
+    const mime: Record<string, string> = {
+      '.wav':  'audio/wav',
+      '.mp3':  'audio/mpeg',
+      '.ogg':  'audio/ogg',
+      '.flac': 'audio/flac',
+      '.aiff': 'audio/aiff',
+      '.aif':  'audio/aiff',
+    };
+    const contentType = mime[ext] ?? 'audio/octet-stream';
+    const data = fs.readFileSync(filePath);
+    const b64 = data.toString('base64');
+    return `data:${contentType};base64,${b64}`;
+  } catch (err) {
+    console.error('browser:getAudioUrl error:', err);
+    return null;
+  }
+});
+
 // ─── App lifecycle ───────────────────────────────────────────────────────────
 
 app.whenReady().then(async () => {
+
   if (!app.isPackaged) {
     console.log('Dev mode: waiting for Vite…');
     await new Promise((r) => setTimeout(r, 2000));

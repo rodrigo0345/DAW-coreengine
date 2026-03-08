@@ -15,6 +15,8 @@ export interface Track {
   oneShot?: boolean;     // true = drum/one-shot
   // Polyphony
   voiceCount?: number;   // number of voices (default 8)
+  // Display mode
+  useMidi?: boolean;     // false (default) = show as audio clip, true = show MIDI notes
 }
 export interface Note {
   id: string;

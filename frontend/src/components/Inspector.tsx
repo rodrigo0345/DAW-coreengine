@@ -308,6 +308,19 @@ export default function Inspector() {
               {(track.oneShot ?? true) ? 'Drum / one-shot' : 'Sustain (ADSR)'}
             </span>
           </div>
+          <div className="ctrl ctrl-row">
+            <label>Clip view</label>
+            <button
+              className={`toggle-btn ${(track.useMidi ?? false) ? 'on' : ''}`}
+              onClick={() => updateTrack(track.id, { useMidi: !(track.useMidi ?? false) })}
+              title="Toggle between audio waveform view and MIDI note view in the timeline"
+            >
+              {(track.useMidi ?? false) ? 'MIDI' : 'AUDIO'}
+            </button>
+            <span className="ctrl-hint" style={{ marginLeft: 6 }}>
+              {(track.useMidi ?? false) ? 'Showing MIDI notes' : 'Showing audio clip'}
+            </span>
+          </div>
         </div>
       )}
       {/* ── ADSR ──────────────────────────────────────────────────────────── */}

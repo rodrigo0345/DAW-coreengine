@@ -44,6 +44,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Generic command (for future use)
   sendCommand: (cmd: string) => ipcRenderer.invoke('send-command', cmd),
 
+  // Sample Browser
+  getMusicDir: () => ipcRenderer.invoke('browser:getMusicDir'),
+  listDir: (dirPath: string) => ipcRenderer.invoke('browser:listDir', dirPath),
+  getAudioUrl: (filePath: string) => ipcRenderer.invoke('browser:getAudioUrl', filePath),
+
   // Engine event listeners
   onEngineOutput: (cb: (data: string) => void) => {
     ipcRenderer.on('engine-output', (_e, data) => cb(data));

@@ -5,6 +5,7 @@ import TrackList from './components/TrackList';
 import Timeline from './components/Timeline';
 import PianoRoll from './components/PianoRoll';
 import Inspector from './components/Inspector';
+import SampleBrowser from './components/SampleBrowser';
 import { useStore } from './store';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
@@ -45,6 +46,10 @@ declare global {
       seek:  (samplePosition: number) => Promise<any>;
       // Generic
       sendCommand: (cmd: string) => Promise<any>;
+      // Sample browser
+      getMusicDir: () => Promise<string>;
+      listDir: (dirPath: string) => Promise<Array<{ name: string; path: string; isDir: boolean; ext: string }>>;
+      getAudioUrl: (filePath: string) => Promise<string | null>;
       // Events
       onEngineOutput:  (callback: (data: string) => void) => void;
       onEngineError:   (callback: (data: string) => void) => void;
@@ -61,6 +66,7 @@ function App() {
   const [engineRunning, setEngineRunning] = useState(false);
   const [engineOutput, setEngineOutput] = useState<string[]>([]);
   const [showConsole, setShowConsole] = useState(false);
+  const [samplesCollapsed, setSamplesCollapsed] = useState(false);
   const { setIsPlaying } = useStore();
 
   // ── Global keyboard shortcuts (FL Studio-style) ────────────────────────────
@@ -156,7 +162,15 @@ function App() {
       </header>
 
       {/* ── Body ──────────────────────────────────────────────────────────── */}
-      <div className="app-body">
+      <div className={`app-body ${samplesCollapsed ? 'samples-collapsed' : ''}`}>
+        <aside className={`sidebar-samples ${samplesCollapsed ? 'collapsed' : ''}`}>
+          <div className="sidebar-samples-toggle" onClick={() => setSamplesCollapsed(v => !v)}
+            title={samplesCollapsed ? 'Expand sample browser' : 'Collapse sample browser'}>
+            <span>{samplesCollapsed ? '🎵' : '◀'}</span>
+          </div>
+          {!samplesCollapsed && <SampleBrowser />}
+        </aside>
+
         <aside className="sidebar-left">
           <div className="sidebar-hdr"><h3>Tracks</h3></div>
           <TrackList />

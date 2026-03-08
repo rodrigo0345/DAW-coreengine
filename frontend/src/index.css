@@ -9,6 +9,11 @@
   -webkit-user-drag: none;
 }
 
+/* Re-enable drag on explicitly draggable elements */
+[draggable="true"] {
+  -webkit-user-drag: element;
+}
+
 /* Re-enable selection only where the user actually types */
 input, textarea, [contenteditable] {
   user-select: text;
