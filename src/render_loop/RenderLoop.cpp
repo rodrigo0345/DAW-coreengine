@@ -363,24 +363,38 @@ void coreengine::RenderLoop::processNextBlock() {
         constexpr float CEILING    = 0.989f;
         constexpr float ATTACK_TC  = 0.001f;
         constexpr float RELEASE_TC = 0.200f;
-        const float sr         = static_cast<float>(audioBuffer_.sampleRate);
+
+        const auto sr          = static_cast<float>(audioBuffer_.sampleRate);
         const float attackCoef  = std::exp(-1.0f / (ATTACK_TC  * sr));
         const float releaseCoef = std::exp(-1.0f / (RELEASE_TC * sr));
 
-        for (size_t s = 0; s < audioBuffer_.numSamples; ++s) {
+        const size_t numChannels = audioBuffer_.channels.size();
+
+        // Cache member locally to allow the compiler to keep it in a register
+        float currentGain = limiterGain_;
+        for (size_t s = 0uz; s < numSamples; ++s) {
+
             float peak = 0.0f;
-            for (auto* ch : audioBuffer_.channels)
-                peak = std::max(peak, std::abs(ch[s]));
-            const float targetGain = (peak > CEILING) ? (CEILING / peak) : 1.0f;
-            if (targetGain < limiterGain_)
-                limiterGain_ = attackCoef  * limiterGain_ + (1.0f - attackCoef)  * targetGain;
-            else
-                limiterGain_ = releaseCoef * limiterGain_ + (1.0f - releaseCoef) * targetGain;
-            for (auto* ch : audioBuffer_.channels)
-                ch[s] *= limiterGain_;
+            for (size_t c = 0uz; c < numChannels; ++c) {
+                const float absSample = std::abs(audioBuffer_.channels[c][s]);
+                peak = (absSample > peak) ? absSample : peak;
+            }
+
+            float targetGain = 1.0f;
+            if (peak > CEILING) [[unlikely]] {
+                targetGain = CEILING / (peak + 1e-9f); // Add epsilon to prevent div-by-zero
+            }
+            const float coef = (targetGain < currentGain) ? attackCoef : releaseCoef;
+            currentGain += (1.0f - coef) * (targetGain - currentGain);
+
+            for (size_t c = 0uz; c < numChannels; ++c) {
+                audioBuffer_.channels[c][s] *= currentGain;
+            }
         }
+
+        limiterGain_ = currentGain;
     }
-    auto t6 = clock::now();
+    const auto t6 = clock::now();
 
     auto dur = [](auto a, auto b) -> ns {
         return std::chrono::duration_cast<std::chrono::nanoseconds>(b - a).count();
@@ -414,7 +428,7 @@ void coreengine::RenderLoop::printTimingReport() const {
                              static_cast<double>(audioBuffer_.sampleRate)) * 1e6;
     const double cpuLoad  = totalUs / budgetUs * 100.0;
     std::fprintf(stderr,
-        "\n╔══════════════════════════════════════════════════════════════╗\n"
+        "\n\n╔══════════════════════════════════════════════════════════════╗\n"
         "║  RenderLoop Block Timing  (avg over %4llu blocks)            ║\n"
         "╠══════════════════════════╦══════════╦══════════╦═════════════╣\n"
         "║  Section                 ║  avg µs  ║   %% tot  ║  CPU load   ║\n"
@@ -427,7 +441,7 @@ void coreengine::RenderLoop::printTimingReport() const {
         "║  6. masterLimiter        ║ %8.2f ║ %7.1f%% ║             ║\n"
         "╠══════════════════════════╬══════════╬══════════╬═════════════╣\n"
         "║  TOTAL per block         ║ %8.2f ║  100.0%%  ║   %6.2f%%   ║\n"
-        "║  Block budget @ %6u Hz ║ %8.2f ║          ║             ║\n"
+        "║  Block budget @ %7uHz ║ %8.2f ║          ║             ║\n"
         "╚══════════════════════════╩══════════╩══════════╩═════════════╝\n",
         static_cast<unsigned long long>(timing_.count),
         static_cast<double>(timing_.commands)       / us / n,  pct(timing_.commands),
