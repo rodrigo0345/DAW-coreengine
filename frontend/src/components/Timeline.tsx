@@ -312,12 +312,46 @@ export default function Timeline() {
     }, [],
   );
 
-  // ── Playback timer ───────────────────────────────────────────────────────────
+  // ── Playback timer with looping ─────────────────────────────────────────────
   useEffect(() => {
     if (!isPlaying) return;
+
     const id = setInterval(() => {
-      setCurrentPosition(useStore.getState().currentPosition + sampleRate / 60);
+      const state = useStore.getState();
+      const spb   = (60 / state.bpm) * state.sampleRate;   // samples per beat
+
+      // ── Determine loop end ─────────────────────────────────────────────────
+      const soloTrack = state.tracks.find(t => t.solo) ?? null;
+
+      let loopEndSamples: number;
+
+      if (soloTrack) {
+        // Solo: loop over the active pattern's notes only
+        const pat = state.patterns.find(p => p.id === state.activePatternId);
+        const lastBeat = pat && pat.notes.length > 0
+          ? Math.max(...pat.notes.map(n => n.startBeat + n.durationBeats))
+          : (pat?.duration ?? 16);
+        loopEndSamples = Math.max(lastBeat, 1) * spb;
+      } else {
+        // Normal: loop over all clips in the timeline
+        const lastBeat = state.clips.length > 0
+          ? Math.max(...state.clips.map(c => c.startBeat + c.duration))
+          : 0;
+        // If nothing in the timeline yet, don't loop (let it run free)
+        loopEndSamples = lastBeat > 0 ? lastBeat * spb : Infinity;
+      }
+
+      const next = state.currentPosition + state.sampleRate / 60;
+
+      if (next >= loopEndSamples && loopEndSamples !== Infinity) {
+        // Wrap around: seek engine and reset position
+        setCurrentPosition(0);
+        window.electronAPI?.seek(0).catch(() => {});
+      } else {
+        setCurrentPosition(next);
+      }
     }, 16);
+
     return () => clearInterval(id);
   }, [isPlaying, sampleRate, setCurrentPosition]);
 
