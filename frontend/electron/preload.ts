@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stop: () => ipcRenderer.invoke('playback:stop'),
   pause: () => ipcRenderer.invoke('playback:pause'),
   seek: (samplePosition: number) => ipcRenderer.invoke('playback:seek', samplePosition),
+  setBpm: (bpm: number) => ipcRenderer.invoke('playback:setBpm', bpm),
 
   // Generic command (for future use)
   sendCommand: (cmd: string) => ipcRenderer.invoke('send-command', cmd),
@@ -48,6 +49,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMusicDir: () => ipcRenderer.invoke('browser:getMusicDir'),
   listDir: (dirPath: string) => ipcRenderer.invoke('browser:listDir', dirPath),
   getAudioUrl: (filePath: string) => ipcRenderer.invoke('browser:getAudioUrl', filePath),
+
+  // Lua Plugins
+  createPlugin: (data: { pluginName: string; pluginSourceCode: string }) =>
+    ipcRenderer.invoke('plugin:create', data),
+  removePlugin: (data: { pluginId: number }) =>
+    ipcRenderer.invoke('plugin:remove', data),
+  updatePlugin: (data: { pluginId: number; pluginSourceCode: string }) =>
+    ipcRenderer.invoke('plugin:update', data),
+  listPlugins: () =>
+    ipcRenderer.invoke('plugin:list'),
+  assignPlugin: (data: { trackId: number; pluginId: number }) =>
+    ipcRenderer.invoke('plugin:assign', data),
 
   // Engine event listeners
   onEngineOutput: (cb: (data: string) => void) => {
@@ -58,5 +71,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onEngineClosed: (cb: (code: number) => void) => {
     ipcRenderer.on('engine-closed', (_e, code) => cb(code));
+  },
+  // Typed push events from the engine (PluginCreated, PluginUpdated, PluginRemoved, PluginList)
+  onEngineEvent: (eventType: string, cb: (data: unknown) => void) => {
+    ipcRenderer.on(`engine:${eventType}`, (_e, data) => cb(data));
   },
 });

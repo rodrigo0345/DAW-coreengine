@@ -10,6 +10,9 @@
 coreengine::CoreServiceEngine::CoreServiceEngine(const EngineConfig& engineConfig)
     : renderLoop(engineConfig), config(engineConfig) {
 
+    // Wire the plugin manager so it runs after each audio block
+    renderLoop.setPluginManager(&pluginManager);
+
     pa_sample_spec ss;
     ss.format = PA_SAMPLE_FLOAT32LE;
     ss.rate = config.getSampleRateVal();

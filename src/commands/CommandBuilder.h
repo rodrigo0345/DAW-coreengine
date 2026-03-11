@@ -7,6 +7,7 @@
 
 #include "Command.h"
 #include "CommandQueue.h"
+#include "../plugins/PluginManager.h"
 
 namespace coreengine {
 
@@ -16,7 +17,7 @@ namespace coreengine {
      */
     class CommandBuilder {
     public:
-        explicit CommandBuilder(CommandQueue& queue) : commandQueue(queue) {}
+        explicit CommandBuilder(CommandQueue& queue, PluginManager& pm) : commandQueue(queue), pluginManager(pm) {}
 
         // ============================================================
         // Playback Control Commands
@@ -216,8 +217,43 @@ namespace coreengine {
                 SetSynthTypeData{trackId, synthType, numVoices, sampleRate}));
         }
 
+        [[nodiscard]]
+        std::expected<size_t, PluginError> createPlugin(const std::string_view pluginName, const std::string_view pluginSourceCode) const {
+            return pluginManager.addPlugin(
+                PluginManager::PluginType::Lua,
+                pluginName,
+                pluginSourceCode);
+        }
+
+        [[nodiscard]]
+        bool removePlugin(const size_t pluginId) const {
+            return pluginManager.removePlugin(pluginId);
+        }
+
+        [[nodiscard]]
+        std::expected<void, std::string> updatePlugin(const size_t pluginId, const std::string_view newSource) const {
+            return pluginManager.updatePlugin(pluginId, newSource);
+        }
+
+        [[nodiscard]]
+        std::vector<PluginManager::PluginInfo> listPlugins() const {
+            return pluginManager.listPlugins();
+        }
+
+        /** Assign a plugin (by id) to a track as its instrument. */
+        bool assignPlugin(int trackId, size_t pluginId) {
+            return commandQueue.push(Command(CommandType::AssignPlugin,
+                AssignPluginData{trackId, pluginId}));
+        }
+
+        /** Change the engine's master BPM. Adjusts playhead to keep the same beat position. */
+        bool setBpm(double bpm) {
+            return commandQueue.push(Command(CommandType::SetBPM, SetBpmData{bpm}));
+        }
+
     private:
         CommandQueue& commandQueue;
+        PluginManager& pluginManager;
     };
 }
 

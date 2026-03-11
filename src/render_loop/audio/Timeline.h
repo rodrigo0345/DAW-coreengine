@@ -8,9 +8,11 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
+#include <iostream>
 #include <map>
 #include "Track.h"
 #include "TimelineEvent.h"
+#include "sol/sol.hpp"
 
 namespace coreengine {
 
@@ -176,7 +178,8 @@ namespace coreengine {
         size_t eventQueueIndex = 0;  // Current position in event queue
         int nextTrackId = 0;
 
-        void triggerEvent(const TimelineEvent& event, bool soloMode) {
+        void triggerEvent(const TimelineEvent& event, const bool soloMode) { // TODO: add solo mode
+            std::cout << "Solo mode: " << (soloMode? "ON" : "OFF");
             Track* track = getTrack(event.trackId);
             if (!track) return;
 
@@ -190,9 +193,11 @@ namespace coreengine {
             switch (event.type) {
                 case EventType::NoteOn:
                     inst->noteOn(event.midiNote, event.velocity);
+                    track->markDirty("timeline:noteOn");
                     break;
                 case EventType::NoteOff:
                     inst->noteOff(event.midiNote);
+                    track->markDirty("timeline:noteOff");
                     break;
                 default:
                     break;

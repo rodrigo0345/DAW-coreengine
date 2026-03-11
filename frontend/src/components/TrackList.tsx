@@ -8,7 +8,7 @@ const TRACK_COLORS = ['#f44336','#e91e63','#9c27b0','#673ab7','#3f51b5','#2196f3
 const AUTOMATION_H = 72;
 
 export default function TrackList() {
-  const { tracks, selectedTrack, addTrack, updateTrack, toggleSolo, setSelectedTrack, automationLanes, setSampleFile } = useStore();
+  const { tracks, selectedTrack, addTrack, updateTrack, toggleSolo, setSelectedTrack, automationLanes, setSampleFile, sampleRate } = useStore();
   const tracksRef = useRef<HTMLDivElement>(null);
   const [dragOverTrackId, setDragOverTrackId] = useState<number | null>(null);
   const [draggingOver, setDraggingOver]       = useState(false);
@@ -69,7 +69,7 @@ export default function TrackList() {
 
     if (track.synthType !== 4) {
       updateTrack(trackId, { synthType: 4 });
-      await window.electronAPI?.setSynthType({ trackId, synthType: 4, numVoices: track.voiceCount ?? 8, sampleRate: 44100 });
+      await window.electronAPI?.setSynthType({ trackId, synthType: 4, numVoices: track.voiceCount ?? 8, sampleRate });
     }
     const name = filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? track.name;
     setSampleFile(trackId, filePath, track.rootNote ?? 69, track.oneShot ?? true);

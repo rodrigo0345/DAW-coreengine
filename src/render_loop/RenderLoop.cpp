@@ -4,6 +4,7 @@
 
 #include "RenderLoop.h"
 #include <iostream>
+#include <latch>
 #include "../commands/Command.h"
 #include "audio/SynthFactory.h"
 #include "audio/SamplePlayer.h"
@@ -13,13 +14,80 @@
 #include "audio/effects/ReverbEffect.h"
 #include "audio/effects/DelayEffect.h"
 #include "audio/effects/DistortionEffect.h"
+#include "../plugins/PluginManager.h"
+
+// ── TrackThreadPool implementation ───────────────────────────────────────────
+
+coreengine::TrackThreadPool::TrackThreadPool(size_t numThreads) {
+    workers_.reserve(numThreads);
+    for (size_t i = 0; i < numThreads; ++i)
+        workers_.emplace_back([this]{ workerLoop(); });
+}
+
+coreengine::TrackThreadPool::~TrackThreadPool() {
+    {
+        std::unique_lock lk(mtx_);
+        stop_.store(true, std::memory_order_release);
+    }
+    cv_.notify_all();
+    for (auto& t : workers_) t.join();
+}
+
+void coreengine::TrackThreadPool::workerLoop() {
+    while (true) {
+        WorkItem item{};
+        {
+            std::unique_lock lk(mtx_);
+            cv_.wait(lk, [this]{
+                return stop_.load(std::memory_order_acquire) ||
+                       head_.load(std::memory_order_acquire) != tail_.load(std::memory_order_acquire);
+            });
+            if (stop_.load(std::memory_order_acquire)) return;
+
+            // Claim one item from the queue under the lock
+            size_t h = head_.load(std::memory_order_relaxed);
+            const size_t t = tail_.load(std::memory_order_relaxed);
+            if (h == t) continue; // spurious wakeup
+            head_.store((h + 1) % QUEUE_CAP, std::memory_order_release);
+            item = queue_[h];
+        }
+        // Execute outside the lock
+        (*item.fn)();
+        item.done->count_down();
+    }
+}
+
+void coreengine::TrackThreadPool::dispatch(std::function<void()>* tasks, size_t count) {
+    if (count == 0) return;
+
+    std::latch done(static_cast<ptrdiff_t>(count));
+
+    {
+        std::unique_lock lk(mtx_);
+        for (size_t i = 0; i < count; ++i) {
+            const size_t slot = tail_.load(std::memory_order_relaxed);
+            queue_[slot] = { &tasks[i], &done };
+            tail_.store((slot + 1) % QUEUE_CAP, std::memory_order_release);
+        }
+    }
+    cv_.notify_all();
+    done.wait();
+}
+
+// ── RenderLoop ────────────────────────────────────────────────────────────────
 
 coreengine::RenderLoop::RenderLoop(const coreengine::EngineConfig& config)
         : positionClock(0), isPlaying(false) {
-    // Allocate backing store once — no per-block heap allocation
     const auto numChannels = static_cast<size_t>(config.getChannelsVal());
     audioBuffer_.initStorage(numChannels, numSamples, config.getSampleRateVal());
+
+    // Spawn N-1 worker threads (leave 1 core for the audio thread itself)
+    const size_t hw = std::thread::hardware_concurrency();
+    const size_t workerCount = (hw > 1) ? hw - 1 : 1;
+    threadPool_ = std::make_unique<TrackThreadPool>(workerCount);
 }
+
+coreengine::RenderLoop::~RenderLoop() = default;
 
 void coreengine::RenderLoop::processCommands() {
     while (const auto cmd = commandQueue.pop()) {
@@ -49,6 +117,7 @@ void coreengine::RenderLoop::processCommands() {
                     if (track->getInstrument()) {
                         track->getInstrument()->allNotesOff();
                     }
+                    track->markDirty("allNotesOff");
                 }
                 break;
             }
@@ -76,7 +145,7 @@ void coreengine::RenderLoop::processCommands() {
 
             // Timeline editing commands
             case CommandType::AddTrack: {
-                auto data = std::get<AddTrackData>(cmd->data);
+                const auto data = std::get<AddTrackData>(cmd->data);
                 auto sr = static_cast<double>(audioBuffer_.sampleRate);
                 auto instrument = SynthFactory::createByType(data.synthType, data.numVoices, sr);
                 timeline.addTrackWithId(data.trackId, data.trackName, std::move(instrument));
@@ -94,15 +163,18 @@ void coreengine::RenderLoop::processCommands() {
                                    data.midiNote, data.velocity);
                 } else if (std::holds_alternative<NoteEventMusicalData>(cmd->data)) {
                     auto data = std::get<NoteEventMusicalData>(cmd->data);
+                    // Always use engine sampleRate — ignore the per-command field
                     timeline.addNoteMusical(data.trackId, data.startBeat, data.durationBeats,
-                                          data.midiNote, data.velocity, data.bpm, data.sampleRate);
+                                          data.midiNote, data.velocity, data.bpm,
+                                          audioBuffer_.sampleRate);
                 }
                 break;
             }
             case CommandType::AddChord: {
                 auto data = std::get<ChordData>(cmd->data);
                 Sequencer::addChord(timeline, data.trackId, data.notes, data.startBeat,
-                                  data.durationBeats, data.velocity, data.bpm, data.sampleRate);
+                                  data.durationBeats, data.velocity, data.bpm,
+                                  audioBuffer_.sampleRate);
                 break;
             }
             case CommandType::AddMelody: {
@@ -112,14 +184,15 @@ void coreengine::RenderLoop::processCommands() {
                     notes.emplace_back(data.midiNotes[i], data.startBeats[i],
                                      data.durationBeats[i], data.velocities[i]);
                 }
-                Sequencer::addMelody(timeline, data.trackId, notes, data.bpm, data.sampleRate);
+                Sequencer::addMelody(timeline, data.trackId, notes, data.bpm,
+                                    audioBuffer_.sampleRate);
                 break;
             }
             case CommandType::AddArpeggio: {
                 auto data = std::get<ArpeggioData>(cmd->data);
                 Sequencer::addArpeggio(timeline, data.trackId, data.notes, data.startBeat,
                                      data.noteLength, data.repetitions, data.velocity,
-                                     data.bpm, data.sampleRate);
+                                     data.bpm, audioBuffer_.sampleRate);
                 break;
             }
             case CommandType::ClearTrack: {
@@ -282,14 +355,24 @@ void coreengine::RenderLoop::processCommands() {
                 auto data = std::get<SetSynthTypeData>(cmd->data);
                 Track* track = timeline.getTrack(data.trackId);
                 if (!track) break;
+                const double sr = static_cast<double>(audioBuffer_.sampleRate);
                 if (data.synthType == 4) {
-                    // Sampler — instrument gets loaded separately via LoadSample
-                    auto sampler = std::make_unique<SamplePlayer>(data.numVoices, data.sampleRate);
+                    auto sampler = std::make_unique<SamplePlayer>(data.numVoices, sr);
                     track->replaceInstrument(std::move(sampler));
                 } else {
-                    auto newInst = SynthFactory::createByType(data.synthType, data.numVoices, data.sampleRate);
+                    auto newInst = SynthFactory::createByType(data.synthType, data.numVoices, sr);
                     track->replaceInstrument(std::move(newInst));
                 }
+                break;
+            }
+            case CommandType::AssignPlugin: {
+                auto data = std::get<AssignPluginData>(cmd->data);
+                Track* track = timeline.getTrack(data.trackId);
+                if (!track || !pluginManager_) break;
+                // The plugin leaves the global pool and becomes the track's instrument.
+                // The track owns it from this point on; the PluginManager slot is cleared.
+                auto plugin = pluginManager_->takePlugin(data.pluginId);
+                if (plugin) track->replaceInstrument(std::move(plugin));
                 break;
             }
             case CommandType::AddInstrument: {
@@ -300,6 +383,20 @@ void coreengine::RenderLoop::processCommands() {
             case CommandType::SetTimestamp: {
                 auto data = std::get<TimestampData>(cmd->data);
                 this->positionClock = data.samples;
+                break;
+            }
+            case CommandType::SetBPM: {
+                auto data = std::get<SetBpmData>(cmd->data);
+                const double newBpm = std::clamp(data.bpm, 20.0, 999.0);
+                if (newBpm != bpm_) {
+                    // Convert current playhead position to beats at old BPM,
+                    // then back to samples at new BPM — keeps musical position.
+                    const double currentBeat = samplesToBeats(positionClock);
+                    bpm_ = newBpm;
+                    positionClock = beatsToSamples(currentBeat);
+                    std::fprintf(stderr, "[Engine] BPM changed to %.1f (position %.2f beats → sample %llu)\n",
+                        bpm_, currentBeat, static_cast<unsigned long long>(positionClock));
+                }
                 break;
             }
             default: ;
@@ -323,6 +420,8 @@ void coreengine::RenderLoop::stop() {
 void coreengine::RenderLoop::reset() {
     positionClock = 0;
     timeline.reset();
+    for (auto& track : timeline.getAllTracks())
+        track->markDirty("reset");
     for (const auto& channelPtr : audioBuffer_.channels)
         std::fill_n(channelPtr, audioBuffer_.numSamples, 0.0f);
 }
@@ -330,6 +429,8 @@ void coreengine::RenderLoop::reset() {
 void coreengine::RenderLoop::gotoPosition(uint64_t userPositionClock) {
     positionClock = userPositionClock;
     timeline.seekTo(userPositionClock);
+    for (auto& track : timeline.getAllTracks())
+        track->markDirty("gotoPosition");
 }
 
 void coreengine::RenderLoop::addProcessor(std::unique_ptr<AudioBlock> block) {
@@ -360,46 +461,75 @@ void coreengine::RenderLoop::processNextBlock() {
     applyAutomation(positionClock, audioBuffer_.numSamples);
     auto t4 = clock::now();
 
-    for (auto& track : timeline.getAllTracks()) {
-        if (timeline.trackIsAudible(*track))
-            track->processBlock(audioBuffer_);
+    // ── Parallel track render ─────────────────────────────────────────────
+    {
+        auto& allTracks = timeline.getAllTracks();
+
+        // Build list of audible tracks + prepare scratch (audio thread only)
+        size_t taskCount = 0;
+        for (auto& track : allTracks) {
+            if (!timeline.trackIsAudible(*track)) continue;
+            if (taskCount >= MAX_PARALLEL_TASKS) break;
+            track->prepareScratch(audioBuffer_);
+            Track* tp = track.get();
+            taskSlots_[taskCount++] = [tp]{ tp->renderToScratch(); };
+        }
+
+        if (taskCount >= MIN_TRACKS_FOR_PARALLEL) {
+            // Run last task on audio thread while workers handle the rest —
+            // avoids the audio thread sitting idle waiting for the latch.
+            threadPool_->dispatch(taskSlots_.data(), taskCount - 1);
+            taskSlots_[taskCount - 1]();  // audio thread does one task
+        } else {
+            for (size_t i = 0; i < taskCount; ++i) taskSlots_[i]();
+        }
+
+        // Serial mix-down — mixDown() internally skips cached (silent) tracks
+        for (auto& track : allTracks) {
+            if (timeline.trackIsAudible(*track))
+                track->mixDown(audioBuffer_);
+        }
     }
+
     for (const auto& processor : processorBlocks)
         processor->processBlock(audioBuffer_);
+
+    // ── Lua effect plugins — run after all tracks ─────────────────────────
+    if (pluginManager_) {
+        pluginManager_->processAll(audioBuffer_);
+    }
     auto t5 = clock::now();
 
-    // ── Master limiter ────────────────────────────────────────────────────
+    // ── Master limiter (SIMD-accelerated) ────────────────────────────────
     {
         constexpr float CEILING    = 0.989f;
         constexpr float ATTACK_TC  = 0.001f;
         constexpr float RELEASE_TC = 0.200f;
 
-        const auto sr          = static_cast<float>(audioBuffer_.sampleRate);
+        const auto sr           = static_cast<float>(audioBuffer_.sampleRate);
         const float attackCoef  = std::exp(-1.0f / (ATTACK_TC  * sr));
         const float releaseCoef = std::exp(-1.0f / (RELEASE_TC * sr));
 
         const size_t numChannels = audioBuffer_.channels.size();
-
-        // Cache member locally to allow the compiler to keep it in a register
         float currentGain = limiterGain_;
-        for (size_t s = 0uz; s < numSamples; ++s) {
 
+        for (size_t s = 0uz; s < numSamples; ++s) {
+            // Scalar peak across channels (only 2 channels — not worth SIMD here)
             float peak = 0.0f;
             for (size_t c = 0uz; c < numChannels; ++c) {
-                const float absSample = std::abs(audioBuffer_.channels[c][s]);
-                peak = (absSample > peak) ? absSample : peak;
+                const float a = std::abs(audioBuffer_.channels[c][s]);
+                if (a > peak) peak = a;
             }
 
             float targetGain = 1.0f;
-            if (peak > CEILING) [[unlikely]] {
-                targetGain = CEILING / (peak + 1e-9f); // Add epsilon to prevent div-by-zero
-            }
+            if (peak * currentGain > CEILING) [[unlikely]]
+                targetGain = CEILING / (peak + 1e-9f);
+
             const float coef = (targetGain < currentGain) ? attackCoef : releaseCoef;
             currentGain += (1.0f - coef) * (targetGain - currentGain);
 
-            for (size_t c = 0uz; c < numChannels; ++c) {
+            for (size_t c = 0uz; c < numChannels; ++c)
                 audioBuffer_.channels[c][s] *= currentGain;
-            }
         }
 
         limiterGain_ = currentGain;
@@ -484,8 +614,9 @@ void coreengine::RenderLoop::applyAutomation(uint64_t blockStartSample, uint64_t
 {
     if (automationData_.empty()) return;
     const double sr   = static_cast<double>(audioBuffer_.sampleRate);
+    const double samplesPerBeat = 60.0 / bpm_ * sr;
     const double beat = (static_cast<double>(blockStartSample) +
-                         static_cast<double>(blockSamples) * 0.5) / (sr * 60.0 / 120.0);
+                         static_cast<double>(blockSamples) * 0.5) / samplesPerBeat;
 
     for (auto& [trackId, params] : automationData_) {
         Track* track = timeline.getTrack(trackId);

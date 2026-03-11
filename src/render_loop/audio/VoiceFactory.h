@@ -29,7 +29,7 @@ namespace coreengine {
          */
         static std::unique_ptr<Voice> createVoice(
             const OscillatorCreator& createOscillator,
-            double sampleRate = 48000.0,
+            double sampleRate = static_cast<double>(ENGINE_SAMPLE_RATE),
             const ADSR::Parameters& adsrParams = ADSR::Parameters()
         ) {
             auto voice = std::make_unique<Voice>(createOscillator(), sampleRate);

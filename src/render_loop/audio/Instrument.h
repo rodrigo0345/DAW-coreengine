@@ -33,6 +33,13 @@ namespace coreengine {
          * Stop all currently playing notes
          */
         virtual void allNotesOff() = 0;
+
+        /**
+         * Returns true if the instrument has active voices that may produce audio.
+         * Used by Track to prevent silence-caching while notes are held.
+         * Default: false (native synths rely on ADSR isActive instead).
+         */
+        [[nodiscard]] virtual bool hasActiveVoices() const { return false; }
     };
 }
 

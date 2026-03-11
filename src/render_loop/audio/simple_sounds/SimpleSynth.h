@@ -14,6 +14,7 @@
 #include "../Instrument.h"
 #include "../VoiceFactory.h"
 #include "../ADSR.h"
+#include "../../../configs/EngineConfig.h"
 
 namespace coreengine {
     /**
@@ -31,13 +32,13 @@ namespace coreengine {
          */
         SimpleSynth(int numVoices,
                    VoiceFactory::OscillatorCreator oscillatorCreator,
-                   double sampleRate = 48000.0,
+                   double sampleRate = static_cast<double>(ENGINE_SAMPLE_RATE),
                    const ADSR::Parameters& adsrParams = ADSR::Parameters())
             : oscillatorCreator_(std::move(oscillatorCreator))
             , sampleRate_(sampleRate)
             , adsrParameters_(adsrParams)
         {
-            voices_.reserve(numVoices);
+            voices_.reserve(static_cast<size_t>(numVoices));
             for (int i = 0; i < numVoices; ++i) {
                 voices_.push_back(VoiceFactory::createVoice(
                     oscillatorCreator_,
@@ -52,7 +53,7 @@ namespace coreengine {
          * @param numVoices Number of simultaneous voices (default: 8)
          * @param sampleRate Sample rate in Hz
          */
-        explicit SimpleSynth(int numVoices = 8, double sampleRate = 48000.0)
+        explicit SimpleSynth(int numVoices = 8, double sampleRate = static_cast<double>(ENGINE_SAMPLE_RATE))
             : SimpleSynth(numVoices,
                 []() -> std::unique_ptr<Oscillator> {
                     return std::make_unique<SineOscillator>();

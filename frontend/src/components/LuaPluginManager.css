@@ -1,0 +1,199 @@
+.lua-pm {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lua-pm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.lua-pm-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted, #888);
+}
+
+.lua-pm-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.lua-btn {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 7px;
+  line-height: 1.6;
+  transition: background 0.15s;
+}
+.lua-btn:hover:not(:disabled) { background: #3a3a3a; color: #fff; }
+.lua-btn:disabled { opacity: 0.45; cursor: default; }
+.lua-btn-save  { background: #1a4a1a; border-color: #2a6a2a; color: #8ef08e; }
+.lua-btn-save:hover:not(:disabled) { background: #236023; }
+.lua-btn-del   { color: #e07070; }
+.lua-btn-del:hover { background: #3a1a1a; }
+.lua-btn-new   { color: #7aadff; }
+.lua-btn-refresh { font-size: 14px; padding: 1px 6px; }
+
+.lua-pm-empty {
+  font-size: 11px;
+  color: #666;
+  padding: 6px 0;
+  font-style: italic;
+}
+
+/* ── Plugin row ────────────────────────────────────────────────────────────── */
+.lua-plugin-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  transition: border-color 0.15s;
+}
+.lua-plugin-row.editing { border-color: #4fa3e0; }
+
+.lua-ready-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.lua-ready-dot.ready { background: #4caf50; }
+.lua-ready-dot.error { background: #e57373; }
+
+.lua-plugin-name {
+  flex: 1;
+  font-size: 12px;
+  color: #ddd;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lua-plugin-id {
+  font-size: 10px;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.lua-plugin-btns {
+  display: flex;
+  gap: 3px;
+}
+
+/* ── Status ────────────────────────────────────────────────────────────────── */
+.lua-status {
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+}
+.lua-status.ok  { background: #1a3a1a; color: #8ef08e; border: 1px solid #2a6a2a; }
+.lua-status.err { background: #3a1a1a; color: #f08e8e; border: 1px solid #6a2a2a; }
+
+/* ── Editor panel ──────────────────────────────────────────────────────────── */
+.lua-editor-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px;
+  background: #151515;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+}
+
+.lua-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.lua-editing-label {
+  font-size: 11px;
+  color: #aaa;
+  flex: 1;
+}
+.lua-editing-label strong { color: #ddd; }
+
+.lua-name-input {
+  flex: 1;
+  min-width: 100px;
+  background: #222;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #ddd;
+  font-size: 12px;
+  padding: 3px 7px;
+  outline: none;
+}
+.lua-name-input:focus { border-color: #4fa3e0; }
+
+.lua-code-editor {
+  width: 100%;
+  box-sizing: border-box;
+  background: #111;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #cce5ff;
+  font-family: 'JetBrains Mono', 'Fira Mono', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 8px;
+  resize: vertical;
+  outline: none;
+  tab-size: 2;
+}
+.lua-code-editor:focus { border-color: #4fa3e0; }
+
+/* ── Assigned banner ───────────────────────────────────────────────────────── */
+.lua-assigned-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 8px;
+  background: #1a2e1a;
+  border: 1px solid #2a6a2a;
+  border-radius: 5px;
+  font-size: 11px;
+  color: #8ef08e;
+  margin-bottom: 2px;
+}
+.lua-assigned-banner em { color: #adf5ad; font-style: normal; font-weight: 600; }
+
+/* ── Assigned row highlight ───────────────────────────────────────────────── */
+.lua-plugin-row.assigned {
+  border-color: #2a6a2a;
+  background: #1a2a1a;
+}
+
+/* ── Assign button ─────────────────────────────────────────────────────────── */
+.lua-btn-assign { color: #7adf9a; }
+.lua-btn-assign:hover { background: #1a3a2a; }
+
+/* ── Template selector ─────────────────────────────────────────────────────── */
+.lua-template-select {
+  background: #222;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #ccc;
+  font-size: 11px;
+  padding: 3px 6px;
+  outline: none;
+  cursor: pointer;
+}
+.lua-template-select:focus { border-color: #4fa3e0; }

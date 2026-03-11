@@ -11,19 +11,26 @@ int main() {
     std::cout << "Waiting for commands from frontend...\n\n";
 
     coreengine::EngineConfig config{};
-    config.sampleRate = coreengine::SampleRate::STUDIO;   // 196 kHz
+    // SampleRate::Default always matches ENGINE_SAMPLE_RATE in EngineConfig.h
+    // — change just that one constant to reconfigure the whole engine.
+    config.sampleRate = coreengine::SampleRate::Default;
     config.dspFormat  = coreengine::DspFormat::FLOAT32;
     config.channels   = coreengine::Channels::STEREO;
 
     coreengine::CoreServiceEngine engine(config);
-    coreengine::CommandBuilder cmd(engine.getRenderLoop().getCommandQueue());
+    coreengine::CommandBuilder cmd(engine.getRenderLoop().getCommandQueue(), engine.getPluginManager());
 
     engine.start();
-    std::printf("Engine started with sample rate %u Hz, format %s, channels %u\n",
+    // Human-readable log to stderr
+    std::fprintf(stderr, "Engine started with sample rate %u Hz, format %s, channels %u\n",
         config.getSampleRateVal(),
         (config.dspFormat == coreengine::DspFormat::FLOAT32) ? "float32" : "float64",
         config.getChannelsVal());
-    std::cout.flush();
+
+    // Machine-readable JSON to stdout so the frontend can sync sampleRate automatically
+    std::printf("{\"type\":\"EngineReady\",\"sampleRate\":%u,\"blockSize\":%u,\"channels\":%u}\n",
+        config.getSampleRateVal(), config.sampleBlockSize, config.getChannelsVal());
+    std::fflush(stdout);
 
     std::string line;
     coreengine::CommandAPI api(cmd);

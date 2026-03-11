@@ -11,6 +11,79 @@
 class CommandJSONParser;
 
 void coreengine::CommandAPI::setupRoutes() {
+
+    routes["CreatePlugin"] = [](const auto& d, auto& c) {
+        const std::string pluginName{ CommandJSONParser::getString(d, "pluginName") };
+        const std::string pluginSourceCode{ CommandJSONParser::getString(d, "pluginSourceCode") };
+        const auto result = c.createPlugin(pluginName, pluginSourceCode);
+        if (!result) {
+            std::cerr << "Error creating plugin: " << static_cast<int>(result.error()) << "\n";
+            // emit failure response
+            std::cout << R"({"type":"PluginCreated","success":false,"id":-1})" << "\n";
+            std::cout.flush();
+        } else {
+            std::cout << R"({"type":"PluginCreated","success":true,"id":)" << *result
+                      << R"(,"name":")" << pluginName << R"("})" << "\n";
+            std::cout.flush();
+        }
+    };
+
+    routes["RemovePlugin"] = [](const auto& d, auto& c) {
+        const auto pluginId = static_cast<size_t>(CommandJSONParser::getInt(d, "pluginId"));
+        const bool ok = c.removePlugin(pluginId);
+        std::cout << R"({"type":"PluginRemoved","success":)" << (ok ? "true" : "false")
+                  << R"(,"id":)" << pluginId << "}\n";
+        std::cout.flush();
+    };
+
+    routes["UpdatePlugin"] = [](const auto& d, auto& c) {
+        const auto pluginId = static_cast<size_t>(CommandJSONParser::getInt(d, "pluginId"));
+        const std::string newSource{ CommandJSONParser::getString(d, "pluginSourceCode") };
+        const auto result = c.updatePlugin(pluginId, newSource);
+        if (!result) {
+            std::cerr << "Error updating plugin " << pluginId << ": " << result.error() << "\n";
+            std::cout << R"({"type":"PluginUpdated","success":false,"id":)" << pluginId
+                      << R"(,"error":")" << result.error() << R"("})" << "\n";
+        } else {
+            std::cout << R"({"type":"PluginUpdated","success":true,"id":)" << pluginId << "}\n";
+        }
+        std::cout.flush();
+    };
+
+    routes["GetPlugins"] = [](const auto&, auto& c) {        const auto plugins = c.listPlugins();
+        std::cout << R"({"type":"PluginList","plugins":[)";
+        for (size_t i = 0; i < plugins.size(); ++i) {
+            if (i > 0) std::cout << ",";
+            // Escape double-quotes inside source code
+            std::string escapedSource;
+            for (char ch : plugins[i].sourceCode) {
+                if      (ch == '"')  escapedSource += R"(\")";
+                else if (ch == '\\') escapedSource += R"(\\)";
+                else if (ch == '\n') escapedSource += R"(\n)";
+                else if (ch == '\r') escapedSource += R"(\r)";
+                else if (ch == '\t') escapedSource += R"(\t)";
+                else                 escapedSource += ch;
+            }
+            std::cout << R"({"id":)" << plugins[i].id
+                      << R"(,"name":")" << plugins[i].name << '"'
+                      << R"(,"ready":)" << (plugins[i].ready ? "true" : "false")
+                      << R"(,"sourceCode":")" << escapedSource << '"'
+                      << "}";
+        }
+        std::cout << "]}\n";
+        std::cout.flush();
+    };
+
+    routes["AssignPlugin"] = [](const auto& d, auto& c) {
+        const int    trackId  = CommandJSONParser::getInt(d, "trackId");
+        const size_t pluginId = static_cast<size_t>(CommandJSONParser::getInt(d, "pluginId"));
+        const bool   ok       = c.assignPlugin(trackId, pluginId);
+        std::cout << R"({"type":"PluginAssigned","success":)" << (ok ? "true" : "false")
+                  << R"(,"trackId":)" << trackId
+                  << R"(,"pluginId":)" << pluginId << "}\n";
+        std::cout.flush();
+    };
+
     // ── Transport ──────────────────────────────────────────────────────────
     routes["Play"]  = [](const auto&, auto& c) { c.play(); };
     routes["Stop"]  = [](const auto&, auto& c) { c.stop(); };
@@ -19,6 +92,10 @@ void coreengine::CommandAPI::setupRoutes() {
 
     routes["Seek"] = [](const auto& d, auto& c) {
         c.seek(static_cast<uint64_t>(CommandJSONParser::getDouble(d, "samplePosition")));
+    };
+
+    routes["SetBPM"] = [](const auto& d, auto& c) {
+        c.setBpm(CommandJSONParser::getDouble(d, "bpm", 120.0));
     };
 
     // ── Track Management ───────────────────────────────────────────────────

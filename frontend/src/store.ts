@@ -1,5 +1,15 @@
 import { create } from 'zustand';
 // store v2 – full arrangement clipboard + proper undo
+
+// ─── Lua Plugin ───────────────────────────────────────────────────────────────
+export interface LuaPlugin {
+  /** Engine-assigned id (index into pool). -1 = not yet persisted in engine */
+  id: number;
+  name: string;
+  sourceCode: string;
+  ready: boolean;
+}
+
 // ─── Data types ──────────────────────────────────────────────────────────────
 export interface Track {
   id: number;
@@ -17,6 +27,8 @@ export interface Track {
   voiceCount?: number;   // number of voices (default 8)
   // Display mode
   useMidi?: boolean;     // false (default) = show as audio clip, true = show MIDI notes
+  // Lua plugin assigned as instrument (-1 = none)
+  luaPluginId?: number;
 }
 export interface Note {
   id: string;
@@ -96,7 +108,7 @@ interface AppState {
   zoomOut: () => void;
   setIsPlaying: (v: boolean) => void;
   setCurrentPosition: (v: number) => void;
-  setBpm: (v: number) => void;
+  setSampleRate: (v: number) => void;
   addTrack: (t: Track) => void;
   removeTrack: (id: number) => void;
   updateTrack: (id: number, u: Partial<Track>) => void;
@@ -144,6 +156,12 @@ interface AppState {
   setSynthTypeOnTrack: (trackId: number, synthType: number) => void;
   // ── Solo (exclusive) ─────────────────────────────────────────────────────
   toggleSolo: (trackId: number) => void;
+  // ── Lua Plugins ──────────────────────────────────────────────────────────
+  luaPlugins: LuaPlugin[];
+  setLuaPlugins: (plugins: LuaPlugin[]) => void;
+  addLuaPlugin: (plugin: LuaPlugin) => void;
+  updateLuaPlugin: (id: number, changes: Partial<LuaPlugin>) => void;
+  removeLuaPlugin: (id: number) => void;
 }
 export const uid = () => Math.random().toString(36).slice(2, 11);
 function snap(s: AppState): Snapshot {
@@ -160,7 +178,7 @@ export const useStore = create<AppState>((set, get) => ({
   isPlaying: false,
   currentPosition: 0,
   bpm: 120,
-  sampleRate: 196000,
+  sampleRate: 44100,   // updated at runtime from engine's EngineReady event
   tracks: [],
   notes: [],
   patterns: [{ id: 'pat-1', name: 'Pattern 1', duration: 16, notes: [] }],
@@ -169,6 +187,7 @@ export const useStore = create<AppState>((set, get) => ({
   noteClipboard: [],
   clipClipboard: [],
   automationLanes: [],
+  luaPlugins: [],
   selectedTrack: null,
   selectedNotes: [],
   selectedClips: [],
@@ -209,6 +228,7 @@ export const useStore = create<AppState>((set, get) => ({
   setIsPlaying: (v) => set({ isPlaying: v }),
   setCurrentPosition: (v) => set({ currentPosition: v }),
   setBpm: (v) => set({ bpm: v }),
+  setSampleRate: (v) => set({ sampleRate: v }),
   addTrack: (t) => set(s => ({ tracks: [...s.tracks, t] })),
   removeTrack: (id) => set(s => ({
     tracks: s.tracks.filter(t => t.id !== id),
@@ -513,4 +533,14 @@ export const useStore = create<AppState>((set, get) => ({
           : t
       ),
     })),
+
+  // ── Lua Plugins ────────────────────────────────────────────────────────────
+  setLuaPlugins: (plugins) => set({ luaPlugins: plugins }),
+  addLuaPlugin: (plugin) => set(s => ({ luaPlugins: [...s.luaPlugins, plugin] })),
+  updateLuaPlugin: (id, changes) =>
+    set(s => ({
+      luaPlugins: s.luaPlugins.map(p => p.id === id ? { ...p, ...changes } : p),
+    })),
+  removeLuaPlugin: (id) =>
+    set(s => ({ luaPlugins: s.luaPlugins.filter(p => p.id !== id) })),
 }));

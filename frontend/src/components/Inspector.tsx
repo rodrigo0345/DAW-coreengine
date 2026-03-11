@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useStore } from '../store';
+import LuaPluginManager from './LuaPluginManager';
 import './Inspector.css';
-const SYNTH_TYPES = ['Sine', 'Square', 'Sawtooth', 'PWM', 'Sampler'];
+const SYNTH_TYPES = ['Sine', 'Square', 'Sawtooth', 'PWM', 'Sampler', 'Lua Plugin'];
 interface ADSRState { attack: number; decay: number; sustain: number; release: number; }
 const DEFAULT_ADSR: ADSRState = { attack: 0.005, decay: 0.05, sustain: 0.7, release: 0.05 };
 interface ReverbParams  { mix: number; roomSize: number; damping: number }
@@ -117,7 +118,7 @@ function midiNoteName(midi: number): string {
 export default function Inspector() {
   const {
     tracks, selectedTrack, updateTrack, toggleSolo, bpm, sampleRate,
-    setSampleFile, setTrackVoiceCount, setSynthTypeOnTrack,
+    setSampleFile, setTrackVoiceCount, setSynthTypeOnTrack, luaPlugins,
   } = useStore();
   const track = tracks.find(t => t.id === selectedTrack);
   const [adsrMap,    setAdsrMap]    = useState<Record<number, ADSRState>>({});
@@ -249,9 +250,16 @@ export default function Inspector() {
         </div>
         <div className="ctrl">
           <label>Synth</label>
-          <select value={track.synthType} onChange={e => handleSynthTypeChange(Number(e.target.value))}>
-            {SYNTH_TYPES.map((t, i) => <option key={i} value={i}>{t}</option>)}
-          </select>
+          {track.synthType === 5 ? (
+            <span className="ctrl-val" style={{ fontStyle: 'italic' }}>
+              🎹 {luaPlugins.find(p => p.id === track.luaPluginId)?.name ?? 'Lua Plugin'}
+              <span className="ctrl-hint" style={{ marginLeft: 6 }}>(unassign in Lua Plugins ↓)</span>
+            </span>
+          ) : (
+            <select value={track.synthType} onChange={e => handleSynthTypeChange(Number(e.target.value))}>
+              {SYNTH_TYPES.filter((_, i) => i !== 5).map((t, i) => <option key={i} value={i}>{t}</option>)}
+            </select>
+          )}
         </div>
         <div className="ctrl">
           <label>Voices</label>
@@ -359,6 +367,10 @@ export default function Inspector() {
               onParamCommit={handleParamCommit} />
           ))}
         </div>
+      </div>
+      {/* ── Lua Plugins ───────────────────────────────────────────────────── */}
+      <div className="inspector-section">
+        <LuaPluginManager />
       </div>
       {/* ── Info ──────────────────────────────────────────────────────────── */}
       <div className="inspector-section">

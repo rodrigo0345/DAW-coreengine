@@ -53,6 +53,12 @@ namespace coreengine {
         SetVoiceCount,  // change number of voices on a track's instrument
         SetSynthType,   // replace synth type (sine/square/saw/pwm/sampler)
 
+        // Plugin assignment — make a plugin the instrument of a track
+        AssignPlugin,   // assign a PluginManager plugin to a track as its instrument
+
+        // Tempo
+        SetBPM,         // change the engine's master BPM
+
         // Legacy
         AddInstrument,
         SetTimestamp,
@@ -198,6 +204,15 @@ namespace coreengine {
         double sampleRate;
     };
 
+    struct AssignPluginData {
+        int    trackId;
+        size_t pluginId;
+    };
+
+    struct SetBpmData {
+        double bpm;
+    };
+
     using CommandData = std::variant<
         std::monostate,
         NoteData,
@@ -219,7 +234,9 @@ namespace coreengine {
         AutomationLaneData,
         LoadSampleData,
         SetVoiceCountData,
-        SetSynthTypeData
+        SetSynthTypeData,
+        AssignPluginData,
+        SetBpmData
     >;
 
     struct Command {

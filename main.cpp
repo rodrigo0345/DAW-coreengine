@@ -13,7 +13,7 @@ int main() {
     config.channels = coreengine::Channels::MONO;
 
     coreengine::CoreServiceEngine engine(config);
-    coreengine::CommandBuilder cmd(engine.getRenderLoop().getCommandQueue());
+    coreengine::CommandBuilder cmd(engine.getRenderLoop().getCommandQueue(), engine.getPluginManager());
 
     constexpr double BPM = 120.0;
     constexpr uint64_t SAMPLE_RATE = 44100;

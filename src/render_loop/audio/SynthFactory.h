@@ -12,6 +12,7 @@
 #include "simple_sounds/SineOscillator.h"
 #include "simple_sounds/SquareOscillator.h"
 #include "simple_sounds/SawtoothOscillator.h"
+#include "../../configs/EngineConfig.h"
 
 namespace coreengine {
     /**
@@ -25,7 +26,7 @@ namespace coreengine {
          * @param numVoices Number of polyphonic voices (default: 8)
          * @return A unique pointer to the synth
          */
-        static std::unique_ptr<Instrument> createSineSynth(int numVoices = 8, double sampleRate = 44100.0) {
+        static std::unique_ptr<Instrument> createSineSynth(int numVoices = 8, double sampleRate = static_cast<double>(ENGINE_SAMPLE_RATE)) {
             return std::make_unique<SimpleSynth>(
                 numVoices,
                 []() -> std::unique_ptr<Oscillator> { return std::make_unique<SineOscillator>(); },
@@ -39,7 +40,7 @@ namespace coreengine {
          * @param pulseWidth Pulse width ratio 0.0-1.0 (default: 0.5 for perfect square)
          * @return A unique pointer to the synth
          */
-        static std::unique_ptr<Instrument> createSquareSynth(int numVoices = 8, double sampleRate = 44100.0, float pulseWidth = 0.5f) {
+        static std::unique_ptr<Instrument> createSquareSynth(int numVoices = 8, double sampleRate = static_cast<double>(ENGINE_SAMPLE_RATE), float pulseWidth = 0.5f) {
             return std::make_unique<SimpleSynth>(
                 numVoices,
                 [pulseWidth]() -> std::unique_ptr<Oscillator> { return std::make_unique<SquareOscillator>(pulseWidth); },
@@ -52,7 +53,7 @@ namespace coreengine {
          * @param numVoices Number of polyphonic voices (default: 8)
          * @return A unique pointer to the synth
          */
-        static std::unique_ptr<Instrument> createSawtoothSynth(int numVoices = 8, double sampleRate = 44100.0) {
+        static std::unique_ptr<Instrument> createSawtoothSynth(int numVoices = 8, double sampleRate = static_cast<double>(ENGINE_SAMPLE_RATE)) {
             return std::make_unique<SimpleSynth>(
                 numVoices,
                 []() -> std::unique_ptr<Oscillator> { return std::make_unique<SawtoothOscillator>(); },
@@ -66,7 +67,7 @@ namespace coreengine {
          * @param numVoices Number of polyphonic voices (default: 8)
          * @return A unique pointer to the synth
          */
-        static std::unique_ptr<Instrument> createPWMSynth(int numVoices = 8, double sampleRate = 44100.0) {
+        static std::unique_ptr<Instrument> createPWMSynth(int numVoices = 8, double sampleRate = static_cast<double>(ENGINE_SAMPLE_RATE)) {
             return std::make_unique<SimpleSynth>(
                 numVoices,
                 []() -> std::unique_ptr<Oscillator> { return std::make_unique<SquareOscillator>(0.1f); },
@@ -74,8 +75,7 @@ namespace coreengine {
             );
         }
 
-        /** Create any synth type by index. 0=Sine, 1=Square, 2=Saw, 3=PWM */
-        static std::unique_ptr<Instrument> createByType(int synthType, int numVoices = 8, double sampleRate = 44100.0) {
+        static std::unique_ptr<Instrument> createByType(int synthType, int numVoices = 8, double sampleRate = static_cast<double>(ENGINE_SAMPLE_RATE)) {
             switch (synthType) {
                 case 1:  return createSquareSynth(numVoices, sampleRate);
                 case 2:  return createSawtoothSynth(numVoices, sampleRate);

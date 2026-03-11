@@ -38,7 +38,10 @@ export default function TransportBar() {
     const val = Math.max(40, Math.min(300, newBpm));
     setBpm(val);
 
-    // Sync all tracks to engine with new BPM
+    // Tell the engine about the new BPM first (adjusts playhead position)
+    await window.electronAPI?.setBpm(val);
+
+    // Sync all tracks to engine with new BPM (re-bakes notes at new tempo)
     for (const t of useStore.getState().tracks) {
       await syncTrackToEngine(t.id);
     }

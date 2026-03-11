@@ -19,7 +19,10 @@ echo ""
 # Build engine
 echo "Building C++ engine..."
 cd /home/rodrigo0345/CLionProjects/DAWCoreEngine
-cmake --build cmake-build-debug --target DAWCoreEngine >/dev/null 2>&1
+
+# build for release
+cmake -S . -B cmake-build-release -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1
+cmake --build cmake-build-release --target DAWCoreEngine >/dev/null 2>&1
 
 if [ $? -eq 0 ]; then
     echo "✓ Engine built successfully"

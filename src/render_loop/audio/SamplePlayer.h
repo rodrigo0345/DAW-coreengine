@@ -13,6 +13,7 @@
 #include "../audio/Instrument.h"
 #include "../audio/ADSR.h"
 #include "../audio/EffectChain.h"
+#include "../../configs/EngineConfig.h"
 
 namespace coreengine {
 
@@ -25,7 +26,7 @@ class SamplePlayer : public Instrument {
 public:
     static constexpr int DEFAULT_ROOT_NOTE = 69; // A4
 
-    explicit SamplePlayer(int numVoices = 8, double sampleRate = 48000.0,
+    explicit SamplePlayer(int numVoices = 8, double sampleRate = static_cast<double>(ENGINE_SAMPLE_RATE),
                           int rootNote = DEFAULT_ROOT_NOTE)
         : numVoices_(numVoices), engineSampleRate_(sampleRate)
         , rootNote_(rootNote), oneShot_(true)
@@ -165,7 +166,7 @@ private:
         float  velocity = 1.0f;
         double speed    = 1.0;
         double readPos  = 0.0;
-        ADSR   adsr{48000.0};   // value type — no heap allocation on noteOn
+        ADSR   adsr{static_cast<double>(ENGINE_SAMPLE_RATE)};   // value type — no heap allocation on noteOn
     };
 
     SampleVoice* findFreeVoice() {

@@ -44,6 +44,7 @@ declare global {
       stop:  () => Promise<any>;
       pause: () => Promise<any>;
       seek:  (samplePosition: number) => Promise<any>;
+      setBpm: (bpm: number) => Promise<any>;
       // Generic
       sendCommand: (cmd: string) => Promise<any>;
       // Sample browser
@@ -54,6 +55,13 @@ declare global {
       onEngineOutput:  (callback: (data: string) => void) => void;
       onEngineError:   (callback: (data: string) => void) => void;
       onEngineClosed:  (callback: (code: number) => void) => void;
+      onEngineEvent:   (eventType: string, callback: (data: unknown) => void) => void;
+      // Lua Plugins
+      createPlugin: (data: { pluginName: string; pluginSourceCode: string }) => Promise<{ success: boolean; id: number; name?: string; error?: string }>;
+      removePlugin: (data: { pluginId: number }) => Promise<{ success: boolean; id: number }>;
+      updatePlugin: (data: { pluginId: number; pluginSourceCode: string }) => Promise<{ success: boolean; id: number; error?: string }>;
+      listPlugins:  () => Promise<{ plugins: Array<{ id: number; name: string; sourceCode: string; ready: boolean }> }>;
+      assignPlugin: (data: { trackId: number; pluginId: number }) => Promise<{ success: boolean; trackId: number; pluginId: number }>;
     };
   }
 }
@@ -67,7 +75,7 @@ function App() {
   const [engineOutput, setEngineOutput] = useState<string[]>([]);
   const [showConsole, setShowConsole] = useState(false);
   const [samplesCollapsed, setSamplesCollapsed] = useState(false);
-  const { setIsPlaying } = useStore();
+  const { setIsPlaying, setSampleRate } = useStore();
 
   // ── Global keyboard shortcuts (FL Studio-style) ────────────────────────────
   useKeyboardShortcuts();
@@ -112,6 +120,12 @@ function App() {
       setEngineRunning(false);
       setIsPlaying(false);
       setEngineOutput((prev) => [...prev, `Engine stopped (code ${code})`]);
+    });
+    // Sync sampleRate as soon as the engine reports it — single source of truth
+    window.electronAPI.onEngineEvent('EngineReady', (data: any) => {
+      if (typeof data?.sampleRate === 'number') {
+        setSampleRate(data.sampleRate);
+      }
     });
 
     handleStartEngine();

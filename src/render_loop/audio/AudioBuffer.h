@@ -9,20 +9,20 @@
 #include <array>
 #include <cstdint>
 #include <cstddef>
+#include "../../configs/EngineConfig.h"
 
 namespace coreengine {
 
 // Maximum supported channels and block size — compile-time constants used
 // everywhere to avoid per-block heap allocation.
 inline constexpr size_t MAX_CHANNELS   = 2;
-inline constexpr size_t MAX_BLOCK_SIZE = 1024;  // samples per block
+inline constexpr size_t MAX_BLOCK_SIZE = ENGINE_BLOCK_SIZE;
 
-// ── Owning buffer (lives in RenderLoop, allocated once at startup) ────────────
 struct AudioBuffer {
     using ptr_float32 = float*;
-    std::vector<ptr_float32> channels;  // pointers into owning storage below
-    uint64_t sampleRate  = 44100;
-    size_t   numSamples  = 512;
+    std::vector<ptr_float32> channels;
+    uint64_t sampleRate  = ENGINE_SAMPLE_RATE;
+    size_t   numSamples  = ENGINE_BLOCK_SIZE;
 
     // Owning backing store — resized once at construction, never again.
     std::array<std::array<float, MAX_BLOCK_SIZE>, MAX_CHANNELS> storage{};
@@ -43,7 +43,7 @@ struct AudioBufferView {
     float* channels[MAX_CHANNELS]{};
     size_t   numChannels = 0;
     size_t   numSamples  = 0;
-    uint64_t sampleRate  = 44100;
+    uint64_t sampleRate  = ENGINE_SAMPLE_RATE;
 
     // Wrap a slice of a fixed scratch array.
     void init(float scratch[][MAX_BLOCK_SIZE], size_t nCh, size_t nSamples, uint64_t sr) {

@@ -5,15 +5,14 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ── Dependencies ────────────────────────────────────────────────────────
-
-# Find PulseAudio (required for core audio engine)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(PULSE REQUIRED libpulse libpulse-simple)
 
-# Find libsndfile (required for loading audio samples)
-pkg_check_modules(SNDFILE REQUIRED sndfile)
+# Map dependencies directly to CMake targets
+pkg_check_modules(PULSE REQUIRED libpulse libpulse-simple IMPORTED_TARGET)
+pkg_check_modules(SNDFILE REQUIRED sndfile IMPORTED_TARGET)
+pkg_check_modules(LUAJIT REQUIRED luajit IMPORTED_TARGET)
 
-# ── RapidJSON (Header-only) ─────────────────────────────────────────────
+# ── FetchContent (Header-only) ──────────────────────────────────────────
 include(FetchContent)
 set(RAPIDJSON_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(RAPIDJSON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -24,32 +23,49 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/Tencent/rapidjson.git
         GIT_TAG master
 )
-FetchContent_MakeAvailable(rapidjson)
 
-# ── Compiler Hardening (Warnings as Errors & UB Prevention) ─────────────
+FetchContent_Declare(
+        sol2
+        GIT_REPOSITORY https://github.com/ThePhD/sol2.git
+        GIT_TAG main
+)
+
+FetchContent_MakeAvailable(rapidjson sol2)
+
+# ── Compiler Hardening ──────────────────────────────────────────────────
 if(MSVC)
-    add_compile_options(/W4 /WX /permissive- /Zc:__cplusplus)
+    add_compile_options(/W4 /WX /permissive- /Zc:__cplusplus /arch:AVX2)
 else()
     add_compile_options(
-            -Wall -Wextra -Wpedantic    # Enable all meaningful warnings
-            -Werror                     # Treat warnings as errors
-            -Wshadow                    # Local variable shadows another
-            -Wnon-virtual-dtor          # Virtual classes must have virtual destructors
-            -Wold-style-cast            # Use static_cast/reinterpret_cast
-            -Wcast-align                # Casting results in alignment issues
-            -Wunused                    # Catch unused code/variables
-            -Woverloaded-virtual        # Warn if hiding virtual functions
-            -Wconversion                # Implicit type conversions with data loss
-            -Wnull-dereference          # Static analysis for null pointers
-            -Wdouble-promotion          # Warn if float promotes to double (Slow in DSP)
-            -Wformat=2                  # Formatting string security/correctness
+            -Wall -Wextra -Wpedantic
+            -Werror
+            -Wshadow
+            -Wnon-virtual-dtor
+            -Wold-style-cast
+            -Wcast-align
+            -Wunused
+            -Woverloaded-virtual
+            -Wconversion
+            -Wnull-dereference
+            -Wdouble-promotion
+            -Wformat=2
     )
+    # ── SIMD: require AVX2 + FMA on this machine ──────────────────────────
+    # These flags are per-target so they don't leak into FetchContent deps.
+    # Applied below to DAWCoreEngine / DAWCoreEngineDemo targets individually.
 endif()
 
-# ── Sanitizers for Debugging ────────────────────────────────────────────
+# ── SIMD compile options (applied to engine targets only) ───────────────
+if(NOT MSVC)
+    set(SIMD_FLAGS -mavx2 -mfma -msse4.2)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        list(APPEND SIMD_FLAGS -O3 -ffast-math -funroll-loops)
+    endif()
+endif()
+
+# ── Sanitizers ──────────────────────────────────────────────────────────
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     if(NOT MSVC)
-        # AddressSanitizer and UndefinedBehaviorSanitizer
         add_compile_options(-fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer)
         add_link_options(-fsanitize=address -fsanitize=undefined)
         message(STATUS "Build: Debug with ASan and UBSan enabled")
@@ -83,36 +99,49 @@ add_executable(DAWCoreEngine main_interactive.cpp ${ENGINE_SOURCES}
         src/commands/CommandJSONParser.cpp
         src/commands/CommandJSONParser.h
         src/commands/CommandAPI.cpp
-        src/commands/CommandAPI.h)
+        src/commands/CommandAPI.h
+        src/plugins/PluginManager.cpp
+        src/plugins/PluginManager.h
+        src/plugins/Plugin.h
+        src/plugins/LuaPlugin.cpp
+        src/plugins/LuaPlugin.h)
 
 target_include_directories(DAWCoreEngine PRIVATE
-        ${PULSE_INCLUDE_DIRS}
-        ${SNDFILE_INCLUDE_DIRS}
         ${rapidjson_SOURCE_DIR}/include
 )
 
+# ── SIMD flags (AVX2 + FMA) ─────────────────────────────────────────────
+if(DEFINED SIMD_FLAGS)
+    target_compile_options(DAWCoreEngine PRIVATE ${SIMD_FLAGS})
+endif()
+
+# Enforce Sol2 safety constraints and LuaJIT compatibility
+target_compile_definitions(DAWCoreEngine PRIVATE
+        SOL_ALL_SAFETIES_ON=1
+        SOL_LUAJIT=1
+        SOL_USING_CXX_LUA=0
+)
+
+# Link using modern imported targets
 target_link_libraries(DAWCoreEngine PRIVATE
-        ${PULSE_LIBRARIES}
-        ${SNDFILE_LIBRARIES}
+        PkgConfig::PULSE
+        PkgConfig::SNDFILE
+        PkgConfig::LUAJIT
+        sol2
 )
 
 # ── Target: DAWCoreEngineDemo (Static Playback Mode) ────────────────────
 add_executable(DAWCoreEngineDemo main.cpp ${ENGINE_SOURCES})
 
 target_include_directories(DAWCoreEngineDemo PRIVATE
-        ${PULSE_INCLUDE_DIRS}
-        ${SNDFILE_INCLUDE_DIRS}
         ${rapidjson_SOURCE_DIR}/include
 )
 
-target_link_libraries(DAWCoreEngineDemo PRIVATE
-        ${PULSE_LIBRARIES}
-        ${SNDFILE_LIBRARIES}
-)
+if(DEFINED SIMD_FLAGS)
+    target_compile_options(DAWCoreEngineDemo PRIVATE ${SIMD_FLAGS})
+endif()
 
-# ── Best Practice: Clang-Tidy (Optional but Recommended) ────────────────
-# If you have clang-tidy installed, this will run it during every build
-# find_program(CLANG_TIDY_EXE NAMES "clang-tidy")
-# if(CLANG_TIDY_EXE)
-#     set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE};-checks=*,-llvmlibc-*")
-# endif()
+target_link_libraries(DAWCoreEngineDemo PRIVATE
+        PkgConfig::PULSE
+        PkgConfig::SNDFILE
+)

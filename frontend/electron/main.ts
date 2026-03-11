@@ -8,6 +8,9 @@ import * as os from 'os';
 let mainWindow: BrowserWindow | null = null;
 let engineProcess: ChildProcess | null = null;
 
+// Pending resolvers for request/response style engine messages
+const pendingEngineResponses = new Map<string, (data: unknown) => void>();
+
 const ENGINE_PATH = path.join(__dirname, '../../cmake-build-debug/DAWCoreEngine');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -19,6 +22,28 @@ function sendToEngine(obj: Record<string, unknown>): { success: boolean; error?:
     return { success: true };
   }
   return { success: false, error: 'Engine not running' };
+}
+
+/** Send a command and wait for a matching response type from the engine stdout */
+function sendToEngineAndWait(obj: Record<string, unknown>, responseType: string, timeoutMs = 5000): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingEngineResponses.delete(responseType);
+      reject(new Error(`Timeout waiting for ${responseType}`));
+    }, timeoutMs);
+
+    pendingEngineResponses.set(responseType, (data) => {
+      clearTimeout(timer);
+      resolve(data);
+    });
+
+    const result = sendToEngine(obj);
+    if (!result.success) {
+      clearTimeout(timer);
+      pendingEngineResponses.delete(responseType);
+      reject(new Error(result.error));
+    }
+  });
 }
 
 // ─── Window ──────────────────────────────────────────────────────────────────
@@ -54,9 +79,34 @@ function startEngine() {
   console.log('Starting engine at:', ENGINE_PATH);
   engineProcess = spawn(ENGINE_PATH, [], { stdio: ['pipe', 'pipe', 'pipe'] });
 
-  engineProcess.stdout?.on('data', (data) => {
-    console.log('Engine:', data.toString().trim());
-    mainWindow?.webContents.send('engine-output', data.toString());
+  // Line-buffered stdout parser
+  let stdoutBuf = '';
+  engineProcess.stdout?.on('data', (data: Buffer) => {
+    stdoutBuf += data.toString();
+    const lines = stdoutBuf.split('\n');
+    stdoutBuf = lines.pop() ?? '';          // keep incomplete last line
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      console.log('Engine:', trimmed);
+      // Forward raw text to renderer
+      mainWindow?.webContents.send('engine-output', trimmed);
+      // Try to parse as JSON and dispatch typed events
+      try {
+        const msg = JSON.parse(trimmed) as Record<string, unknown>;
+        const type = msg.type as string | undefined;
+        if (type) {
+          // Resolve pending request/response waiter
+          const resolver = pendingEngineResponses.get(type);
+          if (resolver) {
+            pendingEngineResponses.delete(type);
+            resolver(msg);
+          }
+          // Also push to renderer as a named event
+          mainWindow?.webContents.send(`engine:${type}`, msg);
+        }
+      } catch { /* non-JSON line – already forwarded as raw text */ }
+    }
   });
   engineProcess.stderr?.on('data', (data) => {
     console.error('Engine ERR:', data.toString().trim());
@@ -92,6 +142,10 @@ ipcMain.handle('playback:pause', async () => sendToEngine({ type: 'Pause' }));
 
 ipcMain.handle('playback:seek', async (_e, samplePosition: number) =>
   sendToEngine({ type: 'Seek', data: { samplePosition: Math.floor(samplePosition) } })
+);
+
+ipcMain.handle('playback:setBpm', async (_e, bpm: number) =>
+  sendToEngine({ type: 'SetBPM', data: { bpm } })
 );
 
 // ─── IPC: Track management ──────────────────────────────────────────────────
@@ -186,6 +240,68 @@ ipcMain.handle('dialog:openAudioFile', async () => {
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   return result.filePaths[0];
+});
+
+// ─── IPC: Plugins (Lua) ──────────────────────────────────────────────────────
+
+ipcMain.handle('plugin:create', async (_e, data: { pluginName: string; pluginSourceCode: string }) => {
+  try {
+    const result = await sendToEngineAndWait(
+      { type: 'CreatePlugin', data },
+      'PluginCreated',
+    );
+    return result;
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('plugin:remove', async (_e, data: { pluginId: number }) => {
+  try {
+    const result = await sendToEngineAndWait(
+      { type: 'RemovePlugin', data },
+      'PluginRemoved',
+    );
+    return result;
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('plugin:update', async (_e, data: { pluginId: number; pluginSourceCode: string }) => {
+  try {
+    const result = await sendToEngineAndWait(
+      { type: 'UpdatePlugin', data },
+      'PluginUpdated',
+    );
+    return result;
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('plugin:list', async () => {
+  try {
+    const result = await sendToEngineAndWait(
+      { type: 'GetPlugins' },
+      'PluginList',
+    );
+    return result;
+  } catch (err) {
+    return { plugins: [], error: String(err) };
+  }
+});
+
+ipcMain.handle('plugin:assign', async (_e, data: { trackId: number; pluginId: number }) => {
+  try {
+    const result = await sendToEngineAndWait(
+      { type: 'AssignPlugin', data },
+      'PluginAssigned',
+    );
+    return result;
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
 });
 
 // ─── IPC: Generic command (for future extensibility) ─────────────────────────

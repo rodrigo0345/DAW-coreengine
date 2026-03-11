@@ -9,6 +9,7 @@
 #include <atomic>
 #include <pulse/simple.h>
 #include "render_loop/RenderLoop.h"
+#include "plugins/PluginManager.h"
 
 namespace coreengine {
 
@@ -22,10 +23,12 @@ namespace coreengine {
 
         // Interface to the underlying RenderLoop for UI control
         coreengine::RenderLoop& getRenderLoop() { return renderLoop; }
+        coreengine::PluginManager& getPluginManager() { return pluginManager; }
 
     private:
         void audioThreadLoop();
 
+        coreengine::PluginManager pluginManager;
         coreengine::RenderLoop renderLoop;
         const EngineConfig& config;
 
