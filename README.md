@@ -1,5 +1,7 @@
 # DAW Core Engine
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/rodrigo0345/DAW-coreengine)
+
 A real-time digital audio workstation engine written in C++23, paired with an Electron + React frontend.
 The engine runs as a standalone process; the UI talks to it over a stdin/stdout JSON-command bus.
 
